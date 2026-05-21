@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useMemo, useState } from "react";
 
 const CAPACITY_12_PACK = 70000;
@@ -430,11 +432,38 @@ export default function BevHubQuoteCalculator() {
             </section>
 
             <Panel title="Pricing Output" action={<button onClick={copyQuote} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Copy Quote Summary</button>}>
-              <div className="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                <div className="font-semibold">Export Note</div>
-                <div className="mt-1">
-                  The ChatGPT preview environment is currently blocking popup windows and file downloads. Use the export sections below to manually copy into Word, Excel, PDF, or email.
-                </div>
+              <div className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-4">
+                <a
+                  href={dataHref(clientQuoteHtml, "text/html")}
+                  download={`Client Quote - ${safeFileName(clientName)}.html`}
+                  className="rounded-xl border bg-white px-3 py-2 text-center text-sm font-semibold hover:bg-slate-50"
+                >
+                  Download Client Quote
+                </a>
+
+                <button
+                  type="button"
+                  onClick={printClientQuote}
+                  className="rounded-xl border bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50"
+                >
+                  Print / Save PDF
+                </button>
+
+                <a
+                  href={dataHref(internalSummaryText, "text/plain")}
+                  download={`Internal Quote Calculation - ${safeFileName(clientName)}.txt`}
+                  className="rounded-xl border bg-white px-3 py-2 text-center text-sm font-semibold hover:bg-slate-50"
+                >
+                  Download Internal Summary
+                </a>
+
+                <a
+                  href={dataHref(csvText, "text/csv")}
+                  download={`Quote Calculation - ${safeFileName(clientName)}.csv`}
+                  className="rounded-xl border bg-white px-3 py-2 text-center text-sm font-semibold hover:bg-slate-50"
+                >
+                  Export CSV
+                </a>
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <Output label="Tolling" value={`${money(result.tolling, 4)} / can`} />
@@ -524,7 +553,7 @@ export default function BevHubQuoteCalculator() {
 
             <div className="mt-8 border-t pt-5 text-xs leading-6 text-slate-600">
               <p>*This quote is based on the production scope, packaging configuration, and assumptions outlined above. Final pricing is subject to confirmation of product specifications, packaging requirements, production schedule, and executed commercial agreement.</p>
-              <p>*Acceptance of this quotation constitutes the client’s obligation to issue a production purchase order (PO) for each authorized production run.</p>
+              <p>*Acceptance of this quotation constitutes the client's obligation to issue a production purchase order (PO) for each authorized production run.</p>
               <p>*Bev-Hub has not produced this product previously and pricing is based on the information provided during the quoting process.</p>
               <p>*Bev-Hub will manufacture strictly to the client-approved formulation and specifications. Bev-Hub assumes no responsibility for formulation performance, stability, or market outcomes, provided production is completed without human error or equipment malfunction.</p>
               <p>*Standard commercialization through Process Authority is estimated at $3,000 per SKU.</p>
