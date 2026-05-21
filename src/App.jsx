@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-
+// FORCE_DEPLOY_CUSTOM_TERMS_2026_05_21
 const CAPACITY_12_PACK = 70000;
 const CAPACITY_24_PACK = 35000;
 const RUN_WEEKS_PER_YEAR = 48;
