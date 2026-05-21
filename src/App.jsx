@@ -704,6 +704,3 @@ function Signature({ title, showPo = false }) {
     </div>
   );
 }
-
-  );
-}
