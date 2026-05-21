@@ -524,7 +524,7 @@ export default function BevHubQuoteCalculator() {
 
             <div className="mt-8 border-t pt-5 text-xs leading-6 text-slate-600">
               <p>*This quote is based on the production scope, packaging configuration, and assumptions outlined above. Final pricing is subject to confirmation of product specifications, packaging requirements, production schedule, and executed commercial agreement.</p>
-              <p>*Acceptance of this quotation constitutes the client's obligation to issue a production purchase order (PO) for each authorized production run.</p>
+              <p>*Acceptance of this quotation constitutes the client’s obligation to issue a production purchase order (PO) for each authorized production run.</p>
               <p>*Bev-Hub has not produced this product previously and pricing is based on the information provided during the quoting process.</p>
               <p>*Bev-Hub will manufacture strictly to the client-approved formulation and specifications. Bev-Hub assumes no responsibility for formulation performance, stability, or market outcomes, provided production is completed without human error or equipment malfunction.</p>
               <p>*Standard commercialization through Process Authority is estimated at $3,000 per SKU.</p>
