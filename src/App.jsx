@@ -399,7 +399,14 @@ export default function BevHubQuoteCalculator() {
       <div className="mx-auto max-w-7xl space-y-6">
         <header>
           <h1 className="text-3xl font-semibold">Bev-Hub Quote Calculator</h1>
-          <p className="mt-2 text-sm text-slate-600">Max weekly capacity: 70,000 12-pack cases or 35,000 24-pack cases.</p>
+
+  <p className="text-xs font-semibold text-green-700">
+    Version: Custom Terms Live 2
+  </p>
+
+  <p className="mt-2 text-sm text-slate-600">
+    Max weekly capacity: 70,000 12-pack cases or 35,000 24-pack cases.
+  </p>
         </header>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
