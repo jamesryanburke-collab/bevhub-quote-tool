@@ -54,6 +54,21 @@ function includedCost(mode, cost) {
   return mode === "included" ? cost : 0;
 }
 
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\n/g, "<br/>");
+}
+
+function getCustomTermLines(value) {
+  return String(value || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
 function calculateQuote(input) {
   const annualCases = Math.max(toNumber(input.annualCases, 0), 0);
   const runsPerYear = Math.max(toNumber(input.runsPerYear, 1), 1);
@@ -199,6 +214,8 @@ function runTests() {
   tests.push({ name: "Included tolling cost is tracked", pass: calculateQuote({ ...testInput, canEndMode: "included" }).includedInToll > 0 });
   tests.push({ name: "Quote text line breaks are export safe", pass: ["A", "B"].join("\n") === "A\nB" });
   tests.push({ name: "CSV export line breaks are safe", pass: csvRowsToText([["A", "B"], ["C", "D"]]) === '"A","B"\n"C","D"' });
+  tests.push({ name: "HTML escaping preserves custom terms safely", pass: escapeHtml("A&B\n<C>") === "A&amp;B<br/>&lt;C&gt;" });
+  tests.push({ name: "Custom terms split into starred lines", pass: getCustomTermLines("One\nTwo\n").length === 2 });
   return tests;
 }
 
@@ -223,6 +240,7 @@ export default function BevHubQuoteCalculator() {
   const [trayCostPerCase, setTrayCostPerCase] = useState("0.139");
   const [caseLabelCostPerCase, setCaseLabelCostPerCase] = useState("0.011");
   const [palletMaterialCostPerPallet, setPalletMaterialCostPerPallet] = useState("13.03");
+  const [customTerms, setCustomTerms] = useState("");
 
   const input = {
     annualCases,
@@ -269,6 +287,8 @@ export default function BevHubQuoteCalculator() {
   ]);
 
   const tests = useMemo(() => runTests(), []);
+  const customTermLines = getCustomTermLines(customTerms);
+  const customTermsHtml = customTermLines.map((line) => `<p>*${escapeHtml(line)}</p>`).join("");
 
   const quoteText = [
     "Pricing Quote Summary",
@@ -289,9 +309,10 @@ export default function BevHubQuoteCalculator() {
     `Carton Application: ${modeLabel(cartonMode)}`,
     `Case Labels: ${modeLabel(caseLabelMode)}`,
     `Pallet Materials: ${modeLabel(palletMode)}`,
-  ].join("\n");
+    customTermLines.length ? `Custom Terms:\n${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
+  ].filter(Boolean).join("\n");
 
-  const clientQuoteHtml = `<!doctype html><html><head><title>Manufacturing Quote - ${clientName}</title><style>body{font-family:Calibri,Arial,sans-serif;color:#0f172a;padding:32px}.page{max-width:850px;margin:0 auto;border:1px solid #cbd5e1;padding:36px}h1{font-size:30px;margin:0}h2{font-size:18px;border-bottom:1px solid #cbd5e1;padding-bottom:6px;margin-top:28px}.muted{color:#64748b;font-size:13px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:28px}.line{display:flex;justify-content:space-between;gap:24px;padding:3px 0;font-size:14px}.strong{font-weight:700}.notes{border-top:1px solid #cbd5e1;margin-top:28px;padding-top:18px;font-size:12px;line-height:1.55;color:#475569}.signature{display:grid;grid-template-columns:1fr 1fr;gap:48px;margin-top:32px;font-size:14px}.sigline{border-bottom:1px solid #475569;height:24px;margin-bottom:18px}@media print{body{padding:0}.page{border:none}}</style></head><body><div class="page"><h1>Manufacturing Quote</h1><div class="muted">Shelf-stable beverage production estimate</div><div class="grid" style="margin-top:20px;"><div class="line"><span>Client</span><span class="strong">${clientName}</span></div><div class="line"><span>Package</span><span class="strong">${canSize}</span></div><div class="line"><span>Case Pack</span><span class="strong">${result.casePack} pack</span></div></div><div class="grid"><div><h2>Volume Assumptions</h2><div class="line"><span>Annual Volume</span><span class="strong">${whole(result.annualCases)} cases</span></div><div class="line"><span>Runs Per Year</span><span class="strong">${result.runsPerYear}</span></div><div class="line"><span>Cases Per Run</span><span class="strong">${whole(result.casesPerRun)}</span></div><div class="line"><span>Production Time Per Run</span><span class="strong">${result.weeksPerRun.toFixed(2)} weeks</span></div></div><div><h2>Pricing Estimate</h2><div class="line"><span>Tolling</span><span class="strong">${money(result.tolling, 4)} / can</span></div><div class="line"><span>Materials and Packaging</span><span class="strong">${money(result.materialsPerCan, 4)} / can</span></div><div class="line"><span>Additional Services</span><span class="strong">${money(result.servicesPerCan, 4)} / can</span></div><div class="line"><span>Estimated Total</span><span class="strong">${money(result.pricePerCan, 4)} / can</span></div><div class="line"><span>Estimated Total</span><span class="strong">${money(result.pricePerCase, 2)} / case</span></div></div></div><h2>Materials and Services</h2><div class="grid"><div class="line"><span>Cans and Ends</span><span class="strong">${modeLabel(canEndMode)}</span></div><div class="line"><span>Trays</span><span class="strong">${modeLabel(trayMode)}</span></div><div class="line"><span>Case Labels</span><span class="strong">${modeLabel(caseLabelMode)}</span></div><div class="line"><span>Pallet Materials</span><span class="strong">${modeLabel(palletMode)}</span></div><div class="line"><span>Sleeve Application</span><span class="strong">${modeLabel(sleeveMode)}</span></div><div class="line"><span>Carton Application</span><span class="strong">${modeLabel(cartonMode)}</span></div></div><div class="notes"><p>*This quote is based on the production scope, packaging configuration, and assumptions outlined above. Final pricing is subject to confirmation of product specifications, packaging requirements, production schedule, and executed commercial agreement.</p><p>*Acceptance of this quotation constitutes the client's obligation to issue a production purchase order (PO) for each authorized production run.</p><p>*Bev-Hub has not produced this product previously and pricing is based on the information provided during the quoting process.</p><p>*Bev-Hub will manufacture strictly to the client-approved formulation and specifications. Bev-Hub assumes no responsibility for formulation performance, stability, or market outcomes, provided production is completed without human error or equipment malfunction.</p><p>*Standard commercialization through Process Authority is estimated at $3,000 per SKU.</p><p>*Bev-Hub will include sleeve application at no additional cost for the first two smaller production runs.</p><h2>Warehousing</h2><p>Pallets In: $15 / pallet raw goods<br/>Cold Storage: $20 / pallet<br/>Pallets Out: $8 / pallet finished goods<br/>Pallet Storage: $15 / pallet per month</p></div><div class="signature"><div><div>Client</div><div class="sigline"></div><div>Name</div><div class="sigline"></div><div>PO Number</div><div class="sigline"></div></div><div><div>Bev-Hub</div><div class="sigline"></div><div>Name</div><div class="sigline"></div></div></div></div></body></html>`;
+  const clientQuoteHtml = `<!doctype html><html><head><title>Manufacturing Quote - ${escapeHtml(clientName)}</title><style>body{font-family:Calibri,Arial,sans-serif;color:#0f172a;padding:32px}.page{max-width:850px;margin:0 auto;border:1px solid #cbd5e1;padding:36px}h1{font-size:30px;margin:0}h2{font-size:18px;border-bottom:1px solid #cbd5e1;padding-bottom:6px;margin-top:28px}.muted{color:#64748b;font-size:13px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:28px}.line{display:flex;justify-content:space-between;gap:24px;padding:3px 0;font-size:14px}.strong{font-weight:700}.notes{border-top:1px solid #cbd5e1;margin-top:28px;padding-top:18px;font-size:12px;line-height:1.55;color:#475569}.signature{display:grid;grid-template-columns:1fr 1fr;gap:48px;margin-top:32px;font-size:14px}.sigline{border-bottom:1px solid #475569;height:24px;margin-bottom:18px}@media print{body{padding:0}.page{border:none}}</style></head><body><div class="page"><h1>Manufacturing Quote</h1><div class="muted">Shelf-stable beverage production estimate</div><div class="grid" style="margin-top:20px;"><div class="line"><span>Client</span><span class="strong">${escapeHtml(clientName)}</span></div><div class="line"><span>Package</span><span class="strong">${escapeHtml(canSize)}</span></div><div class="line"><span>Case Pack</span><span class="strong">${result.casePack} pack</span></div></div><div class="grid"><div><h2>Volume Assumptions</h2><div class="line"><span>Annual Volume</span><span class="strong">${whole(result.annualCases)} cases</span></div><div class="line"><span>Runs Per Year</span><span class="strong">${result.runsPerYear}</span></div><div class="line"><span>Cases Per Run</span><span class="strong">${whole(result.casesPerRun)}</span></div><div class="line"><span>Production Time Per Run</span><span class="strong">${result.weeksPerRun.toFixed(2)} weeks</span></div></div><div><h2>Pricing Estimate</h2><div class="line"><span>Tolling</span><span class="strong">${money(result.tolling, 4)} / can</span></div><div class="line"><span>Materials and Packaging</span><span class="strong">${money(result.materialsPerCan, 4)} / can</span></div><div class="line"><span>Additional Services</span><span class="strong">${money(result.servicesPerCan, 4)} / can</span></div><div class="line"><span>Estimated Total</span><span class="strong">${money(result.pricePerCan, 4)} / can</span></div><div class="line"><span>Estimated Total</span><span class="strong">${money(result.pricePerCase, 2)} / case</span></div></div></div><h2>Materials and Services</h2><div class="grid"><div class="line"><span>Cans and Ends</span><span class="strong">${modeLabel(canEndMode)}</span></div><div class="line"><span>Trays</span><span class="strong">${modeLabel(trayMode)}</span></div><div class="line"><span>Case Labels</span><span class="strong">${modeLabel(caseLabelMode)}</span></div><div class="line"><span>Pallet Materials</span><span class="strong">${modeLabel(palletMode)}</span></div><div class="line"><span>Sleeve Application</span><span class="strong">${modeLabel(sleeveMode)}</span></div><div class="line"><span>Carton Application</span><span class="strong">${modeLabel(cartonMode)}</span></div></div><div class="notes"><p>*This quote is based on the production scope, packaging configuration, and assumptions outlined above. Final pricing is subject to confirmation of product specifications, packaging requirements, production schedule, and executed commercial agreement.</p><p>*Acceptance of this quotation constitutes the client's obligation to issue a production purchase order (PO) for each authorized production run.</p><p>*Bev-Hub has not produced this product previously and pricing is based on the information provided during the quoting process.</p><p>*Bev-Hub will manufacture strictly to the client-approved formulation and specifications. Bev-Hub assumes no responsibility for formulation performance, stability, or market outcomes, provided production is completed without human error or equipment malfunction.</p><p>*Standard commercialization through Process Authority is estimated at $3,000 per SKU.</p>${customTermsHtml}<h2>Warehousing</h2><p>Pallets In: $15 / pallet raw goods<br/>Cold Storage: $20 / pallet<br/>Pallets Out: $8 / pallet finished goods<br/>Pallet Storage: $15 / pallet per month</p></div><div class="signature"><div><div>Client</div><div class="sigline"></div><div>Name</div><div class="sigline"></div><div>PO Number</div><div class="sigline"></div></div><div><div>Bev-Hub</div><div class="sigline"></div><div>Name</div><div class="sigline"></div></div></div></div></body></html>`;
 
   const internalSummaryText = [
     "Internal Quote Calculation Summary",
@@ -316,7 +337,8 @@ export default function BevHubQuoteCalculator() {
     `Annual Revenue: ${money(result.annualRevenue, 2)}`,
     `Review Status: ${result.status}`,
     `Review Note: ${result.statusNote}`,
-  ].join("\n");
+    customTermLines.length ? `Custom Terms:\n${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
+  ].filter(Boolean).join("\n");
 
   const csvText = csvRowsToText([
     ["Field", "Value"],
@@ -345,6 +367,7 @@ export default function BevHubQuoteCalculator() {
     ["Pallet Materials", modeLabel(palletMode)],
     ["Sleeve Application", modeLabel(sleeveMode)],
     ["Carton Application", modeLabel(cartonMode)],
+    ["Custom Terms", customTermLines.map((line) => `*${line}`).join("\n")],
   ]);
 
   function safeFileName(value) {
@@ -419,6 +442,18 @@ export default function BevHubQuoteCalculator() {
                   <TextInput label="Carton $ / Can" value={cartonCostPerCan} onChange={setCartonCostPerCan} type="number" step="0.0001" />
                 </div>
               </div>
+
+              <div className="rounded-xl border p-4">
+                <h3 className="mb-3 text-sm font-semibold">Custom Quote Terms</h3>
+                <p className="mb-3 text-xs text-slate-500">Each line entered below will automatically format as a starred term at the bottom of the quote.</p>
+                <textarea
+                  value={customTerms}
+                  onChange={(event) => setCustomTerms(event.target.value)}
+                  placeholder="Enter customer-specific terms, assumptions, commercialization notes, freight terms, MOQ language, promotional pricing notes, or other quote-specific details."
+                  className="min-h-[140px] w-full rounded-xl border px-3 py-2 text-sm"
+                />
+                <p className="mt-2 text-xs text-slate-500">These terms will appear on the client quote, internal summary, and CSV export.</p>
+              </div>
             </div>
           </section>
 
@@ -433,37 +468,10 @@ export default function BevHubQuoteCalculator() {
 
             <Panel title="Pricing Output" action={<button onClick={copyQuote} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Copy Quote Summary</button>}>
               <div className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-4">
-                <a
-                  href={dataHref(clientQuoteHtml, "text/html")}
-                  download={`Client Quote - ${safeFileName(clientName)}.html`}
-                  className="rounded-xl border bg-white px-3 py-2 text-center text-sm font-semibold hover:bg-slate-50"
-                >
-                  Download Client Quote
-                </a>
-
-                <button
-                  type="button"
-                  onClick={printClientQuote}
-                  className="rounded-xl border bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50"
-                >
-                  Print / Save PDF
-                </button>
-
-                <a
-                  href={dataHref(internalSummaryText, "text/plain")}
-                  download={`Internal Quote Calculation - ${safeFileName(clientName)}.txt`}
-                  className="rounded-xl border bg-white px-3 py-2 text-center text-sm font-semibold hover:bg-slate-50"
-                >
-                  Download Internal Summary
-                </a>
-
-                <a
-                  href={dataHref(csvText, "text/csv")}
-                  download={`Quote Calculation - ${safeFileName(clientName)}.csv`}
-                  className="rounded-xl border bg-white px-3 py-2 text-center text-sm font-semibold hover:bg-slate-50"
-                >
-                  Export CSV
-                </a>
+                <a href={dataHref(clientQuoteHtml, "text/html")} download={`Client Quote - ${safeFileName(clientName)}.html`} className="rounded-xl border bg-white px-3 py-2 text-center text-sm font-semibold hover:bg-slate-50">Download Client Quote</a>
+                <button type="button" onClick={printClientQuote} className="rounded-xl border bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50">Print / Save PDF</button>
+                <a href={dataHref(internalSummaryText, "text/plain")} download={`Internal Quote Calculation - ${safeFileName(clientName)}.txt`} className="rounded-xl border bg-white px-3 py-2 text-center text-sm font-semibold hover:bg-slate-50">Download Internal Summary</a>
+                <a href={dataHref(csvText, "text/csv")} download={`Quote Calculation - ${safeFileName(clientName)}.csv`} className="rounded-xl border bg-white px-3 py-2 text-center text-sm font-semibold hover:bg-slate-50">Export CSV</a>
               </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <Output label="Tolling" value={`${money(result.tolling, 4)} / can`} />
@@ -553,11 +561,20 @@ export default function BevHubQuoteCalculator() {
 
             <div className="mt-8 border-t pt-5 text-xs leading-6 text-slate-600">
               <p>*This quote is based on the production scope, packaging configuration, and assumptions outlined above. Final pricing is subject to confirmation of product specifications, packaging requirements, production schedule, and executed commercial agreement.</p>
-              <p>*Acceptance of this quotation constitutes the client's obligation to issue a production purchase order (PO) for each authorized production run.</p>
+              <p>*Acceptance of this quotation constitutes the client’s obligation to issue a production purchase order (PO) for each authorized production run.</p>
               <p>*Bev-Hub has not produced this product previously and pricing is based on the information provided during the quoting process.</p>
               <p>*Bev-Hub will manufacture strictly to the client-approved formulation and specifications. Bev-Hub assumes no responsibility for formulation performance, stability, or market outcomes, provided production is completed without human error or equipment malfunction.</p>
               <p>*Standard commercialization through Process Authority is estimated at $3,000 per SKU.</p>
-              <p>*Bev-Hub will include sleeve application at no additional cost for the first two smaller production runs.</p>
+
+              {customTermLines.length > 0 && (
+                <div className="mt-5 border-t pt-4">
+                  <div className="space-y-2 text-sm text-slate-700">
+                    {customTermLines.map((line, index) => (
+                      <div key={index}>*{line}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="mt-5 border-t pt-4">
                 <div className="font-semibold">Warehousing</div>
@@ -577,20 +594,12 @@ export default function BevHubQuoteCalculator() {
           <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
             <div>
               <h2 className="mb-3 text-xl font-semibold">Internal Calculation Export</h2>
-              <textarea
-                readOnly
-                value={internalSummaryText}
-                className="h-96 w-full rounded-xl border bg-slate-900 p-4 font-mono text-xs text-white"
-              />
+              <textarea readOnly value={internalSummaryText} className="h-96 w-full rounded-xl border bg-slate-900 p-4 font-mono text-xs text-white" />
             </div>
 
             <div>
               <h2 className="mb-3 text-xl font-semibold">CSV Export Data</h2>
-              <textarea
-                readOnly
-                value={csvText}
-                className="h-96 w-full rounded-xl border bg-slate-900 p-4 font-mono text-xs text-white"
-              />
+              <textarea readOnly value={csvText} className="h-96 w-full rounded-xl border bg-slate-900 p-4 font-mono text-xs text-white" />
             </div>
           </div>
 
