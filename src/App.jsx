@@ -1,9 +1,9 @@
 "use client";
 
 import React, { useMemo, useState } from "react";
-// FORCE_DEPLOY_CUSTOM_TERMS_2026_05_21
-const CAPACITY_12_PACK = 70000;
-const CAPACITY_24_PACK = 35000;
+
+const CAPACITY_12_PACK = 75000;
+const CAPACITY_24_PACK = 37500;
 const RUN_WEEKS_PER_YEAR = 48;
 
 const materialDefaults = {
@@ -42,8 +42,10 @@ function modeLabel(mode) {
   return "Not needed";
 }
 
-function getWeeklyCapacity(casePack) {
-  return Number(casePack) === 24 ? CAPACITY_24_PACK : CAPACITY_12_PACK;
+function getWeeklyCapacity(casePack, weeklyOutput12Pack, weeklyOutput24Pack) {
+  return Number(casePack) === 24
+    ? Math.max(toNumber(weeklyOutput24Pack, CAPACITY_24_PACK), 1)
+    : Math.max(toNumber(weeklyOutput12Pack, CAPACITY_12_PACK), 1);
 }
 
 function additionalCost(mode, cost) {
@@ -77,8 +79,10 @@ function calculateQuote(input) {
   const tolling = Math.max(toNumber(input.tolling, 0), 0);
   const casesPerPallet = Math.max(toNumber(input.casesPerPallet, 1), 1);
   const selected = materialDefaults[input.canSize] || materialDefaults["12 oz Sleek"];
+  const weeklyOutput12Pack = Math.max(toNumber(input.weeklyOutput12Pack, CAPACITY_12_PACK), 1);
+  const weeklyOutput24Pack = Math.max(toNumber(input.weeklyOutput24Pack, CAPACITY_24_PACK), 1);
 
-  const maxWeeklyCases = getWeeklyCapacity(casePack);
+  const maxWeeklyCases = getWeeklyCapacity(casePack, weeklyOutput12Pack, weeklyOutput24Pack);
   const annualCapacity = maxWeeklyCases * RUN_WEEKS_PER_YEAR;
   const casesPerRun = annualCases / runsPerYear;
   const casesPerSkuPerRun = casesPerRun / skuCount;
@@ -128,6 +132,16 @@ function calculateQuote(input) {
 
   recommendedTolling = Math.max(0.28, recommendedTolling);
 
+  const recommendedIncreasePct = tolling > 0 ? Math.max((recommendedTolling - tolling) / tolling, 0) : 0;
+  const tollingCoverageRatio = recommendedTolling > 0 ? tolling / recommendedTolling : 0;
+
+  let operationalGrade = "Losing Money";
+  if (tollingCoverageRatio >= 1.25) operationalGrade = "Amazing";
+  else if (tollingCoverageRatio >= 1.15) operationalGrade = "Great";
+  else if (tollingCoverageRatio >= 1.05) operationalGrade = "Good";
+  else if (tollingCoverageRatio >= 1) operationalGrade = "Better";
+  else if (tollingCoverageRatio >= 0.95) operationalGrade = "Covering";
+
   let status = "Healthy";
   let statusNote = "Production cadence appears reasonable based on the selected case pack and annual volume.";
   if (weeksPerRun < 1) {
@@ -152,6 +166,11 @@ function calculateQuote(input) {
     utilization,
     tolling,
     recommendedTolling,
+    recommendedIncreasePct,
+    tollingCoverageRatio,
+    operationalGrade,
+    weeklyOutput12Pack,
+    weeklyOutput24Pack,
     canEndCost,
     trayCost,
     caseLabelCost,
@@ -202,8 +221,8 @@ function csvRowsToText(rows) {
 function runTests() {
   const tests = [];
   const base = calculateQuote(testInput);
-  tests.push({ name: "70,000 12-pack cases equals 1 production week", pass: Math.abs(base.weeksPerRun - 1) < 0.0001 });
-  tests.push({ name: "35,000 24-pack cases equals 1 production week", pass: Math.abs(calculateQuote({ ...testInput, casePack: "24", annualCases: "35000" }).weeksPerRun - 1) < 0.0001 });
+  tests.push({ name: "75,000 12-pack cases equals 1 production week", pass: Math.abs(calculateQuote({ ...testInput, annualCases: "75000" }).weeksPerRun - 1) < 0.0001 });
+  tests.push({ name: "37,500 24-pack cases equals 1 production week", pass: Math.abs(calculateQuote({ ...testInput, casePack: "24", annualCases: "37500" }).weeksPerRun - 1) < 0.0001 });
   tests.push({ name: "12-pack case conversion is accurate", pass: base.cansPerYear === 840000 });
   tests.push({ name: "Price per case equals price per can times case pack", pass: Math.abs(base.pricePerCase - base.pricePerCan * 12) < 0.0001 });
   tests.push({ name: "Client supplied cans remove can and end cost", pass: calculateQuote({ ...testInput, canEndMode: "clientSupplied" }).canEndCost === 0 });
@@ -240,6 +259,8 @@ export default function BevHubQuoteCalculator() {
   const [trayCostPerCase, setTrayCostPerCase] = useState("0.139");
   const [caseLabelCostPerCase, setCaseLabelCostPerCase] = useState("0.011");
   const [palletMaterialCostPerPallet, setPalletMaterialCostPerPallet] = useState("13.03");
+  const [weeklyOutput12Pack, setWeeklyOutput12Pack] = useState("75000");
+  const [weeklyOutput24Pack, setWeeklyOutput24Pack] = useState("37500");
   const [customTerms, setCustomTerms] = useState("");
 
   const input = {
@@ -262,6 +283,8 @@ export default function BevHubQuoteCalculator() {
     trayCostPerCase,
     caseLabelCostPerCase,
     palletMaterialCostPerPallet,
+    weeklyOutput12Pack,
+    weeklyOutput24Pack,
   };
 
   const result = useMemo(() => calculateQuote(input), [
@@ -284,6 +307,8 @@ export default function BevHubQuoteCalculator() {
     trayCostPerCase,
     caseLabelCostPerCase,
     palletMaterialCostPerPallet,
+    weeklyOutput12Pack,
+    weeklyOutput24Pack,
   ]);
 
   const tests = useMemo(() => runTests(), []);
@@ -309,6 +334,8 @@ export default function BevHubQuoteCalculator() {
     `Carton Application: ${modeLabel(cartonMode)}`,
     `Case Labels: ${modeLabel(caseLabelMode)}`,
     `Pallet Materials: ${modeLabel(palletMode)}`,
+    `Operational Grade: ${result.operationalGrade}`,
+    `Recommended Increase: ${(result.recommendedIncreasePct * 100).toFixed(1)}%`,
     customTermLines.length ? `Custom Terms:\n${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
   ].filter(Boolean).join("\n");
 
@@ -337,6 +364,8 @@ export default function BevHubQuoteCalculator() {
     `Annual Revenue: ${money(result.annualRevenue, 2)}`,
     `Review Status: ${result.status}`,
     `Review Note: ${result.statusNote}`,
+    `Operational Grade: ${result.operationalGrade}`,
+    `Recommended Increase: ${(result.recommendedIncreasePct * 100).toFixed(1)}%`,
     customTermLines.length ? `Custom Terms:\n${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
   ].filter(Boolean).join("\n");
 
@@ -367,6 +396,8 @@ export default function BevHubQuoteCalculator() {
     ["Pallet Materials", modeLabel(palletMode)],
     ["Sleeve Application", modeLabel(sleeveMode)],
     ["Carton Application", modeLabel(cartonMode)],
+    ["Operational Grade", result.operationalGrade],
+    ["Recommended Increase", `${(result.recommendedIncreasePct * 100).toFixed(1)}%`],
     ["Custom Terms", customTermLines.map((line) => `*${line}`).join("\n")],
   ]);
 
@@ -405,7 +436,7 @@ export default function BevHubQuoteCalculator() {
   </p>
 
   <p className="mt-2 text-sm text-slate-600">
-    Max weekly capacity: 70,000 12-pack cases or 35,000 24-pack cases.
+    Manhattan standard weekly output: 75,000 12-pack cases or 37,500 24-pack cases. Weekly output can be adjusted by quote if operations confirms a different run rate.
   </p>
         </header>
 
@@ -425,6 +456,15 @@ export default function BevHubQuoteCalculator() {
               <SelectInput label="Can Size" value={canSize} onChange={setCanSize} options={["12 oz Sleek", "250 ml Slim", "7.5 oz", "16 oz"]} />
               <TextInput label="Tolling $ / Can" value={tolling} onChange={setTolling} type="number" step="0.0001" />
               <TextInput label="Cases / Pallet" value={casesPerPallet} onChange={setCasesPerPallet} type="number" />
+
+              <div className="rounded-xl border p-4">
+                <h3 className="mb-3 text-sm font-semibold">Weekly Output Assumptions</h3>
+                <p className="mb-3 text-xs text-slate-500">Manhattan standard is 75,000 12-pack cases/week for 12 oz sleek. Adjust only if operations confirms a different weekly run rate.</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <TextInput label="12-Pack Cases / Week" value={weeklyOutput12Pack} onChange={setWeeklyOutput12Pack} type="number" />
+                  <TextInput label="24-Pack Cases / Week" value={weeklyOutput24Pack} onChange={setWeeklyOutput24Pack} type="number" />
+                </div>
+              </div>
 
               <div className="rounded-xl bg-slate-100 p-4">
                 <h3 className="mb-3 text-sm font-semibold">Material and Service Treatment</h3>
@@ -483,10 +523,13 @@ export default function BevHubQuoteCalculator() {
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <Output label="Tolling" value={`${money(result.tolling, 4)} / can`} />
                 <Output label="Recommended Tolling" value={`${money(result.recommendedTolling, 4)} / can`} />
+                <Output label="Operational Grade" value={result.operationalGrade} />
+                <Output label="Recommended Increase" value={`${(result.recommendedIncreasePct * 100).toFixed(1)}%`} />
                 <Output label="Materials" value={`${money(result.materialsPerCan, 4)} / can`} />
                 <Output label="Additional Services" value={`${money(result.servicesPerCan, 4)} / can`} />
                 <Output label="Estimated Total" value={`${money(result.pricePerCan, 4)} / can`} />
                 <Output label="Estimated Total" value={`${money(result.pricePerCase, 2)} / case`} />
+                <Output label="Weekly Output Assumption" value={`${whole(result.maxWeeklyCases)} cases`} />
               </div>
             </Panel>
 
