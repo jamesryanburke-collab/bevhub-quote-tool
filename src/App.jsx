@@ -75,9 +75,18 @@ function getCustomTermLines(value) {
     .filter(Boolean);
 }
 
+function gradeFromPct(value) {
+  if (value >= 0.3) return "Amazing";
+  if (value >= 0.2) return "Great";
+  if (value >= 0.1) return "Good";
+  if (value >= 0.05) return "Better";
+  if (value >= 0) return "Covering";
+  return "Losing Money";
+}
+
 function calculateQuote(input) {
   const annualCases = Math.max(toNumber(input.annualCases, 0), 0);
-  const runsPerYear = Math.max(toNumber(input.runsPerYear, 1), 1);
+  const productionWeeksPerYear = Math.max(toNumber(input.runsPerYear, 1), 1);
   const skuCount = Math.max(toNumber(input.skuCount, 1), 1);
   const casePack = Math.max(toNumber(input.casePack, 12), 1);
   const tolling = Math.max(toNumber(input.tolling, 0), 0);
@@ -91,10 +100,12 @@ function calculateQuote(input) {
 
   const maxWeeklyCases = getWeeklyCapacity(casePack, weeklyOutput12Pack, weeklyOutput24Pack);
   const annualCapacity = maxWeeklyCases * RUN_WEEKS_PER_YEAR;
-  const casesPerRun = annualCases / runsPerYear;
-  const casesPerSkuPerRun = casesPerRun / skuCount;
+  const weeklyCasesForProfit = annualCases / productionWeeksPerYear;
+  const casesPerRun = weeklyCasesForProfit;
+  const casesPerSkuPerRun = weeklyCasesForProfit / skuCount;
   const cansPerYear = annualCases * casePack;
-  const weeksPerRun = casesPerRun / maxWeeklyCases;
+  const weeklyCansForProfit = weeklyCasesForProfit * casePack;
+  const weeksPerRun = weeklyCasesForProfit / maxWeeklyCases;
   const utilization = annualCapacity > 0 ? annualCases / annualCapacity : 0;
 
   const canEndUnit = toNumber(input.canEndCostPerCan, selected.canEnd);
@@ -125,54 +136,50 @@ function calculateQuote(input) {
   const pricePerCan = tolling + materialsPerCan + servicesPerCan;
   const pricePerCase = pricePerCan * casePack;
 
-  const productionWeeksPerYear = Math.max(runsPerYear, 1);
-  const weeklyCasesForProfit = annualCases / productionWeeksPerYear;
-  const weeklyCansForProfit = weeklyCasesForProfit * casePack;
+  const bevHubSuppliedCogsPerCan =
+    (input.canEndMode === "additional" || input.canEndMode === "included" ? canEndUnit : 0) +
+    (input.trayMode === "additional" || input.trayMode === "included" ? trayUnit : 0) +
+    (input.caseLabelMode === "additional" || input.caseLabelMode === "included" ? caseLabelUnit : 0) +
+    (input.palletMode === "additional" || input.palletMode === "included" ? palletUnit : 0) +
+    (input.sleeveMode === "additional" || input.sleeveMode === "included" ? sleeveUnit : 0) +
+    (input.cartonMode === "additional" || input.cartonMode === "included" ? cartonUnit : 0);
+
   const weeklyRevenue = weeklyCansForProfit * pricePerCan;
-  const weeklyCogsBase = weeklyCansForProfit * (materialsPerCan + servicesPerCan);
-  const weeklyCogsEstimate = weeklyCogsBase * (1 + cogsBuffer);
+  const weeklyCogsEstimate = weeklyCansForProfit * bevHubSuppliedCogsPerCan * (1 + cogsBuffer);
   const estimatedWeeklyNet = weeklyRevenue - lowWeeklyOH - weeklyCogsEstimate;
   const estimatedWholeRunNet = estimatedWeeklyNet * productionWeeksPerYear;
-  const ohResultPct = lowWeeklyOH > 0 ? estimatedWeeklyNet / lowWeeklyOH : 0;
+
+  // Spreadsheet-style grades:
+  // OH Result = weekly revenue compared to weekly OH coverage.
+  // After Supplies = weekly net after OH and supplied COGS compared to weekly OH coverage.
+  const ohResultPct = lowWeeklyOH > 0 ? weeklyRevenue / lowWeeklyOH - 1 : 0;
   const afterSuppliesPct = lowWeeklyOH > 0 ? estimatedWeeklyNet / lowWeeklyOH : 0;
+  const ohGrade = gradeFromPct(ohResultPct);
+  const afterSuppliesGrade = gradeFromPct(afterSuppliesPct);
+  const operationalGrade = afterSuppliesGrade;
 
-  let operationalGrade = "Losing Money";
-  let gradeThreshold = -0.01;
-  if (ohResultPct >= 0.3) {
-    operationalGrade = "Amazing";
-    gradeThreshold = 0.3;
-  } else if (ohResultPct >= 0.2) {
-    operationalGrade = "Great";
-    gradeThreshold = 0.2;
-  } else if (ohResultPct >= 0.1) {
-    operationalGrade = "Good";
-    gradeThreshold = 0.1;
-  } else if (ohResultPct >= 0.05) {
-    operationalGrade = "Better";
-    gradeThreshold = 0.05;
-  } else if (ohResultPct >= 0) {
-    operationalGrade = "Covering";
-    gradeThreshold = 0;
-  }
-
-  const requiredTotalPriceForGood = weeklyCansForProfit > 0 ? ((lowWeeklyOH * (1 + TARGET_GRADE_THRESHOLD)) + weeklyCogsEstimate) / weeklyCansForProfit : 0;
+  const requiredWeeklyRevenueForGood = lowWeeklyOH * (1 + TARGET_GRADE_THRESHOLD) + weeklyCogsEstimate;
+  const requiredTotalPriceForGood = weeklyCansForProfit > 0 ? requiredWeeklyRevenueForGood / weeklyCansForProfit : 0;
   const recommendedTolling = Math.max(requiredTotalPriceForGood - materialsPerCan - servicesPerCan, 0);
   const recommendedIncreasePct = tolling > 0 ? Math.max((recommendedTolling - tolling) / tolling, 0) : 0;
   const tollingCoverageRatio = recommendedTolling > 0 ? tolling / recommendedTolling : 0;
 
   let status = "Healthy";
-  let statusNote = "Production cadence appears reasonable based on the selected case pack and annual volume.";
-  if (weeksPerRun < 1) {
-    status = "Cadence Review";
-    statusNote = "Each run is below one full production week. Consider a cadence adder or consolidating volume into fewer runs.";
-  } else if (tolling < recommendedTolling) {
+  let statusNote = "This quote meets the Manhattan operational profitability threshold based on weekly revenue, OH coverage, and supplied COGS.";
+  if (afterSuppliesPct < 0) {
+    status = "Losing Money";
+    statusNote = "This quote does not cover the Manhattan weekly OH and supplied COGS threshold. Increase tolling, reduce supplied materials exposure, or consolidate production weeks.";
+  } else if (afterSuppliesPct < 0.1) {
     status = "Pricing Review";
-    statusNote = "Entered tolling is below the recommended tolling estimate based on volume, cadence, and SKU count.";
+    statusNote = "This quote covers OH but does not reach the preferred Good threshold. Review tolling or campaign structure before sending externally.";
+  } else if (weeksPerRun < 1) {
+    status = "Cadence Review";
+    statusNote = "This production campaign is below one full standard week of output. Confirm operations is aligned on the partial-week economics.";
   }
 
   return {
     annualCases,
-    runsPerYear,
+    runsPerYear: productionWeeksPerYear,
     skuCount,
     casePack,
     casesPerRun,
@@ -187,7 +194,9 @@ function calculateQuote(input) {
     recommendedIncreasePct,
     tollingCoverageRatio,
     operationalGrade,
-    gradeThreshold,
+    ohGrade,
+    afterSuppliesGrade,
+    gradeThreshold: TARGET_GRADE_THRESHOLD,
     lowWeeklyOH,
     highWeeklyOH,
     cogsBuffer,
@@ -195,6 +204,7 @@ function calculateQuote(input) {
     weeklyCasesForProfit,
     weeklyCansForProfit,
     weeklyRevenue,
+    bevHubSuppliedCogsPerCan,
     weeklyCogsEstimate,
     estimatedWeeklyNet,
     estimatedWholeRunNet,
@@ -469,7 +479,7 @@ export default function BevHubQuoteCalculator() {
     <div className="min-h-screen bg-slate-50 p-6 text-slate-900">
       <div className="mx-auto max-w-7xl space-y-6">
         <header>
-          <h1 className="text-3xl font-semibold">Bev-Hub Quote Calculator MHK v2</h1>
+          <h1 className="text-3xl font-semibold">Bev-Hub Quote Calculator</h1>
 
   <p className="text-xs font-semibold text-green-700">
     Version: MHK Profit Logic Live 1
