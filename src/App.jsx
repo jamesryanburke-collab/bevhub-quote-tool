@@ -472,7 +472,7 @@ export default function BevHubQuoteCalculator() {
           <h1 className="text-3xl font-semibold">Bev-Hub Quote Calculator</h1>
 
   <p className="text-xs font-semibold text-green-700">
-    Version: Custom Terms Live 2
+    Version: MHK Profit Logic Live 1
   </p>
 
   <p className="mt-2 text-sm text-slate-600">
