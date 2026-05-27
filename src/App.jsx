@@ -5,6 +5,10 @@ import React, { useMemo, useState } from "react";
 const CAPACITY_12_PACK = 75000;
 const CAPACITY_24_PACK = 37500;
 const RUN_WEEKS_PER_YEAR = 48;
+const DEFAULT_LOW_WEEKLY_OH = 250000;
+const DEFAULT_HIGH_WEEKLY_OH = 350000;
+const DEFAULT_COGS_BUFFER = 0.1;
+const TARGET_GRADE_THRESHOLD = 0.1;
 
 const materialDefaults = {
   "12 oz Sleek": { canEnd: 0.15524, tray12: 0.139, tray24: 0.285 },
@@ -78,6 +82,9 @@ function calculateQuote(input) {
   const casePack = Math.max(toNumber(input.casePack, 12), 1);
   const tolling = Math.max(toNumber(input.tolling, 0), 0);
   const casesPerPallet = Math.max(toNumber(input.casesPerPallet, 1), 1);
+  const lowWeeklyOH = Math.max(toNumber(input.lowWeeklyOH, DEFAULT_LOW_WEEKLY_OH), 1);
+  const highWeeklyOH = Math.max(toNumber(input.highWeeklyOH, DEFAULT_HIGH_WEEKLY_OH), 1);
+  const cogsBuffer = Math.max(toNumber(input.cogsBuffer, DEFAULT_COGS_BUFFER), 0);
   const selected = materialDefaults[input.canSize] || materialDefaults["12 oz Sleek"];
   const weeklyOutput12Pack = Math.max(toNumber(input.weeklyOutput12Pack, CAPACITY_12_PACK), 1);
   const weeklyOutput24Pack = Math.max(toNumber(input.weeklyOutput24Pack, CAPACITY_24_PACK), 1);
@@ -118,29 +125,40 @@ function calculateQuote(input) {
   const pricePerCan = tolling + materialsPerCan + servicesPerCan;
   const pricePerCase = pricePerCan * casePack;
 
-  let recommendedTolling = 0.38;
-  if (annualCases >= 3000000) recommendedTolling = 0.3;
-  else if (annualCases >= 2000000) recommendedTolling = 0.31;
-  else if (annualCases >= 1000000) recommendedTolling = 0.33;
-  else if (annualCases >= 500000) recommendedTolling = 0.35;
-
-  if (casesPerRun < maxWeeklyCases) recommendedTolling += 0.04;
-  else if (casesPerRun < maxWeeklyCases * 2) recommendedTolling += 0.02;
-
-  if (skuCount >= 4) recommendedTolling += 0.015;
-  else if (skuCount >= 2) recommendedTolling += 0.0075;
-
-  recommendedTolling = Math.max(0.28, recommendedTolling);
-
-  const recommendedIncreasePct = tolling > 0 ? Math.max((recommendedTolling - tolling) / tolling, 0) : 0;
-  const tollingCoverageRatio = recommendedTolling > 0 ? tolling / recommendedTolling : 0;
+  const productionWeeksPerYear = Math.max(runsPerYear, 1);
+  const weeklyCasesForProfit = annualCases / productionWeeksPerYear;
+  const weeklyCansForProfit = weeklyCasesForProfit * casePack;
+  const weeklyRevenue = weeklyCansForProfit * pricePerCan;
+  const weeklyCogsBase = weeklyCansForProfit * (materialsPerCan + servicesPerCan);
+  const weeklyCogsEstimate = weeklyCogsBase * (1 + cogsBuffer);
+  const estimatedWeeklyNet = weeklyRevenue - lowWeeklyOH - weeklyCogsEstimate;
+  const estimatedWholeRunNet = estimatedWeeklyNet * productionWeeksPerYear;
+  const ohResultPct = lowWeeklyOH > 0 ? estimatedWeeklyNet / lowWeeklyOH : 0;
+  const afterSuppliesPct = lowWeeklyOH > 0 ? estimatedWeeklyNet / lowWeeklyOH : 0;
 
   let operationalGrade = "Losing Money";
-  if (tollingCoverageRatio >= 1.25) operationalGrade = "Amazing";
-  else if (tollingCoverageRatio >= 1.15) operationalGrade = "Great";
-  else if (tollingCoverageRatio >= 1.05) operationalGrade = "Good";
-  else if (tollingCoverageRatio >= 1) operationalGrade = "Better";
-  else if (tollingCoverageRatio >= 0.95) operationalGrade = "Covering";
+  let gradeThreshold = -0.01;
+  if (ohResultPct >= 0.3) {
+    operationalGrade = "Amazing";
+    gradeThreshold = 0.3;
+  } else if (ohResultPct >= 0.2) {
+    operationalGrade = "Great";
+    gradeThreshold = 0.2;
+  } else if (ohResultPct >= 0.1) {
+    operationalGrade = "Good";
+    gradeThreshold = 0.1;
+  } else if (ohResultPct >= 0.05) {
+    operationalGrade = "Better";
+    gradeThreshold = 0.05;
+  } else if (ohResultPct >= 0) {
+    operationalGrade = "Covering";
+    gradeThreshold = 0;
+  }
+
+  const requiredTotalPriceForGood = weeklyCansForProfit > 0 ? ((lowWeeklyOH * (1 + TARGET_GRADE_THRESHOLD)) + weeklyCogsEstimate) / weeklyCansForProfit : 0;
+  const recommendedTolling = Math.max(requiredTotalPriceForGood - materialsPerCan - servicesPerCan, 0);
+  const recommendedIncreasePct = tolling > 0 ? Math.max((recommendedTolling - tolling) / tolling, 0) : 0;
+  const tollingCoverageRatio = recommendedTolling > 0 ? tolling / recommendedTolling : 0;
 
   let status = "Healthy";
   let statusNote = "Production cadence appears reasonable based on the selected case pack and annual volume.";
@@ -169,6 +187,19 @@ function calculateQuote(input) {
     recommendedIncreasePct,
     tollingCoverageRatio,
     operationalGrade,
+    gradeThreshold,
+    lowWeeklyOH,
+    highWeeklyOH,
+    cogsBuffer,
+    productionWeeksPerYear,
+    weeklyCasesForProfit,
+    weeklyCansForProfit,
+    weeklyRevenue,
+    weeklyCogsEstimate,
+    estimatedWeeklyNet,
+    estimatedWholeRunNet,
+    ohResultPct,
+    afterSuppliesPct,
     weeklyOutput12Pack,
     weeklyOutput24Pack,
     canEndCost,
@@ -261,6 +292,9 @@ export default function BevHubQuoteCalculator() {
   const [palletMaterialCostPerPallet, setPalletMaterialCostPerPallet] = useState("13.03");
   const [weeklyOutput12Pack, setWeeklyOutput12Pack] = useState("75000");
   const [weeklyOutput24Pack, setWeeklyOutput24Pack] = useState("37500");
+  const [lowWeeklyOH, setLowWeeklyOH] = useState("250000");
+  const [highWeeklyOH, setHighWeeklyOH] = useState("350000");
+  const [cogsBuffer, setCogsBuffer] = useState("0.10");
   const [customTerms, setCustomTerms] = useState("");
 
   const input = {
@@ -285,6 +319,9 @@ export default function BevHubQuoteCalculator() {
     palletMaterialCostPerPallet,
     weeklyOutput12Pack,
     weeklyOutput24Pack,
+    lowWeeklyOH,
+    highWeeklyOH,
+    cogsBuffer,
   };
 
   const result = useMemo(() => calculateQuote(input), [
@@ -309,6 +346,9 @@ export default function BevHubQuoteCalculator() {
     palletMaterialCostPerPallet,
     weeklyOutput12Pack,
     weeklyOutput24Pack,
+    lowWeeklyOH,
+    highWeeklyOH,
+    cogsBuffer,
   ]);
 
   const tests = useMemo(() => runTests(), []);
@@ -447,7 +487,7 @@ export default function BevHubQuoteCalculator() {
               <TextInput label="Client / Brand" value={clientName} onChange={setClientName} />
               <div className="grid grid-cols-2 gap-3">
                 <TextInput label="Annual Cases" value={annualCases} onChange={setAnnualCases} type="number" />
-                <TextInput label="Runs / Year" value={runsPerYear} onChange={setRunsPerYear} type="number" />
+                <TextInput label="Production Weeks / Year" value={runsPerYear} onChange={setRunsPerYear} type="number" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <TextInput label="SKU Count" value={skuCount} onChange={setSkuCount} type="number" />
@@ -463,6 +503,16 @@ export default function BevHubQuoteCalculator() {
                 <div className="grid grid-cols-2 gap-3">
                   <TextInput label="12-Pack Cases / Week" value={weeklyOutput12Pack} onChange={setWeeklyOutput12Pack} type="number" />
                   <TextInput label="24-Pack Cases / Week" value={weeklyOutput24Pack} onChange={setWeeklyOutput24Pack} type="number" />
+                </div>
+              </div>
+
+              <div className="rounded-xl border p-4">
+                <h3 className="mb-3 text-sm font-semibold">Manhattan OH Coverage Assumptions</h3>
+                <p className="mb-3 text-xs text-slate-500">Used to grade operational profitability like the Manhattan pricing guide.</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <TextInput label="Low Weekly OH" value={lowWeeklyOH} onChange={setLowWeeklyOH} type="number" />
+                  <TextInput label="High Weekly OH" value={highWeeklyOH} onChange={setHighWeeklyOH} type="number" />
+                  <TextInput label="COGS Buffer" value={cogsBuffer} onChange={setCogsBuffer} type="number" step="0.01" />
                 </div>
               </div>
 
@@ -506,8 +556,8 @@ export default function BevHubQuoteCalculator() {
 
           <main className="space-y-6 lg:col-span-2">
             <section className="grid grid-cols-1 gap-4 md:grid-cols-5">
-              <Kpi title="Cases / Run" value={whole(result.casesPerRun)} />
-              <Kpi title="Weeks / Run" value={result.weeksPerRun.toFixed(2)} />
+              <Kpi title="Cases / Production Week" value={whole(result.weeklyCasesForProfit)} />
+              <Kpi title="Line Weeks Needed" value={result.weeksPerRun.toFixed(2)} />
               <Kpi title="Max Weekly" value={`${whole(result.maxWeeklyCases)} cases`} />
               <Kpi title="Utilization" value={pct(result.utilization)} />
               <Kpi title="Annual Revenue" value={money(result.annualRevenue, 2)} />
@@ -524,12 +574,16 @@ export default function BevHubQuoteCalculator() {
                 <Output label="Tolling" value={`${money(result.tolling, 4)} / can`} />
                 <Output label="Recommended Tolling" value={`${money(result.recommendedTolling, 4)} / can`} />
                 <Output label="Operational Grade" value={result.operationalGrade} />
+                <Output label="OH Result" value={`${(result.ohResultPct * 100).toFixed(2)}%`} />
                 <Output label="Recommended Increase" value={`${(result.recommendedIncreasePct * 100).toFixed(1)}%`} />
                 <Output label="Materials" value={`${money(result.materialsPerCan, 4)} / can`} />
                 <Output label="Additional Services" value={`${money(result.servicesPerCan, 4)} / can`} />
                 <Output label="Estimated Total" value={`${money(result.pricePerCan, 4)} / can`} />
                 <Output label="Estimated Total" value={`${money(result.pricePerCase, 2)} / case`} />
                 <Output label="Weekly Output Assumption" value={`${whole(result.maxWeeklyCases)} cases`} />
+                <Output label="Weekly Revenue" value={money(result.weeklyRevenue, 2)} />
+                <Output label="Est. Week Net Inc." value={money(result.estimatedWeeklyNet, 2)} />
+                <Output label="Estimated Whole Run Net" value={money(result.estimatedWholeRunNet, 2)} />
               </div>
             </Panel>
 
