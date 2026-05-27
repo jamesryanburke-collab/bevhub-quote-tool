@@ -469,7 +469,7 @@ export default function BevHubQuoteCalculator() {
     <div className="min-h-screen bg-slate-50 p-6 text-slate-900">
       <div className="mx-auto max-w-7xl space-y-6">
         <header>
-          <h1 className="text-3xl font-semibold">Bev-Hub Quote Calculator</h1>
+          <h1 className="text-3xl font-semibold">Bev-Hub Quote Calculator MHK v2</h1>
 
   <p className="text-xs font-semibold text-green-700">
     Version: MHK Profit Logic Live 1
