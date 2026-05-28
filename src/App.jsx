@@ -586,9 +586,9 @@ export default function BevHubQuoteCalculator() {
             <Panel title="Pricing Output" action={<button onClick={copyQuote} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Copy Quote Summary</button>}>
               <div className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-3">
                 <a href={dataHref(clientQuoteHtml, "text/html")} download={`Client Quote - ${safeFileName(clientName)}.html`} className="rounded-xl border bg-white px-3 py-2 text-center text-sm font-semibold hover:bg-slate-50">Download Client Quote</a>
-                <button type="button" onClick={printClientQuote} className="rounded-xl border bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50">Print Client Quote</button>
+                <button type="button" onClick={printClientQuote} className="rounded-xl border bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50">Download / Save Client PDF</button>
                 <a href={dataHref(internalFinancialHtml, "text/html")} download={`Internal Financial Summary - ${safeFileName(clientName)}.html`} className="rounded-xl border bg-white px-3 py-2 text-center text-sm font-semibold hover:bg-slate-50">Download Internal Financials</a>
-                <button type="button" onClick={printInternalFinancials} className="rounded-xl border bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50">Print Internal Financials</button>
+                <button type="button" onClick={printInternalFinancials} className="rounded-xl border bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50">Download / Save Internal PDF</button>
                 <a href={dataHref(internalSummaryText, "text/plain")} download={`Internal Quote Calculation - ${safeFileName(clientName)}.txt`} className="rounded-xl border bg-white px-3 py-2 text-center text-sm font-semibold hover:bg-slate-50">Download Internal Text</a>
                 <a href={dataHref(csvText, "text/csv")} download={`Quote Calculation - ${safeFileName(clientName)}.csv`} className="rounded-xl border bg-white px-3 py-2 text-center text-sm font-semibold hover:bg-slate-50">Export CSV</a>
               </div>
