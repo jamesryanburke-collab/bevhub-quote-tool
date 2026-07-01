@@ -55,10 +55,8 @@ function isBevHubSupplied(mode) {
 function additionalCost(mode, cost) {
   return mode === "additional" || mode === "included" ? cost : 0;
 }
-}
 
 function includedCost(mode, cost) {
-  return 0;
 }
 
 function getWeeklyCapacity(casePack, weeklyOutput12Pack, weeklyOutput24Pack) {
