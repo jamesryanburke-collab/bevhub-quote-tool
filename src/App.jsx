@@ -57,6 +57,7 @@ function additionalCost(mode, cost) {
 }
 
 function includedCost(mode, cost) {
+  return 0;
 }
 
 function getWeeklyCapacity(casePack, weeklyOutput12Pack, weeklyOutput24Pack) {
