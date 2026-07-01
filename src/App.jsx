@@ -173,7 +173,7 @@ function calculateQuote(input) {
   const requiredWeeklyRevenueForGood = lowWeeklyOH * (1 + DEFAULT_TARGET_GRADE) + weeklyCogsEstimate;
   const requiredTotalPriceForGood = weeklyCans > 0 ? requiredWeeklyRevenueForGood / weeklyCans : 0;
   const recommendedTolling = Math.max(requiredTotalPriceForGood - materialsPerCan - servicesPerCan, 0);
-  const recommendedIncreasePct = tolling > 0 ? Math.max((recommendedTolling - tolling) / tolling, 0) : 0;
+  const recommendedIncreasePct = tollingWithIncluded > 0 ? Math.max((recommendedTolling - tollingWithIncluded) / tollingWithIncluded, 0) : 0;
 
   let status = "Healthy";
   let statusNote = "This quote meets the Manhattan operational profitability threshold based on weekly revenue, OH coverage, and supplied COGS.";
@@ -415,7 +415,7 @@ export default function BevHubQuoteCalculator() {
     ["Max Weekly Capacity", result.maxWeeklyCases],
     ["Line Weeks Needed", result.lineWeeksNeeded],
     ["Utilization", percent(result.utilization)],
-    ["Tolling Per Can", result.tolling],
+    ["Tolling Per Can", result.tollingWithIncluded],
     ["Recommended Tolling For Good", result.recommendedTolling],
     ["Recommended Increase", percent(result.recommendedIncreasePct)],
     ["Materials Per Can", result.materialsPerCan],
