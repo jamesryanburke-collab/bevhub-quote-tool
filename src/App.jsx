@@ -43,7 +43,7 @@ function percent(value, decimals = 1) {
 
 function modeLabel(mode) {
   if (mode === "additional") return "Additional cost";
-  if (mode === "included") return "Included in tolling";
+  if (mode === "included") return "Included";
   if (mode === "clientSupplied") return "Client supplied";
   return "Not needed";
 }
