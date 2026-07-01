@@ -812,7 +812,7 @@ function ModeSelect({ label, value, onChange }) {
       value={value}
       onChange={onChange}
       options={["additional", "included", "clientSupplied", "notNeeded"]}
-      labels={{ additional: "Additional cost", included: "Included in tolling", clientSupplied: "Client supplied", notNeeded: "Not needed" }}
+      labels={{ additional: "Additional cost", included: "Included", clientSupplied: "Client supplied", notNeeded: "Not needed" }}
     />
   );
 }
