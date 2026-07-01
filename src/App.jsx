@@ -53,7 +53,8 @@ function isBevHubSupplied(mode) {
 }
 
 function additionalCost(mode, cost) {
-  return mode === "additional" ? cost : 0;
+  return mode === "additional" || mode === "included" ? cost : 0;
+}
 }
 
 function includedCost(mode, cost) {
