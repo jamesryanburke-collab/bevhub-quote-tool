@@ -549,7 +549,7 @@ export default function BevHubQuoteCalculator() {
       <div className="mx-auto max-w-7xl space-y-6">
         <header>
           <h1 className="text-3xl font-semibold">Bev-Hub Quote Calculator MHK v4 Included Fix</h1>
-          <p className="text-xs font-semibold text-green-700">Version: MHK Profit Logic Live 1</p>
+          <p className="text-xs font-semibold text-green-700">Version: Version: MHK Profit Logic Live 2</p>
           <p className="mt-2 text-sm text-slate-600">
             Manhattan-only pricing tool. Standard weekly output is 75,000 12-pack cases or 37,500 24-pack cases. Weekly output can be adjusted if operations confirms a different run rate.
           </p>
