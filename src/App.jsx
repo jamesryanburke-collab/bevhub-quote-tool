@@ -278,6 +278,46 @@ function runTests() {
 }
 
 export default function BevHubQuoteCalculator() {
+  const ACCESS_PASSWORD = "Bev-Hub123!";
+  const ACCESS_MAX_AGE_MS = 8 * 60 * 60 * 1000;
+
+  const [passwordInput, setPasswordInput] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [isAuthorized, setIsAuthorized] = useState(() => {
+    if (typeof window === "undefined") return false;
+
+    const savedAccess = window.localStorage.getItem("bevhubQuoteAccess") === "true";
+    const savedAt = Number(window.localStorage.getItem("bevhubQuoteAccessAt") || 0);
+    const isStillValid = savedAccess && Date.now() - savedAt < ACCESS_MAX_AGE_MS;
+
+    if (!isStillValid) {
+      window.localStorage.removeItem("bevhubQuoteAccess");
+      window.localStorage.removeItem("bevhubQuoteAccessAt");
+    }
+
+    return isStillValid;
+  });
+
+  function handleLogin() {
+    if (passwordInput === ACCESS_PASSWORD) {
+      window.localStorage.setItem("bevhubQuoteAccess", "true");
+      window.localStorage.setItem("bevhubQuoteAccessAt", String(Date.now()));
+      setIsAuthorized(true);
+      setPasswordInput("");
+      setLoginError("");
+      return;
+    }
+
+    setLoginError("Incorrect password. Please try again.");
+  }
+
+  function handleLogout() {
+    window.localStorage.removeItem("bevhubQuoteAccess");
+    window.localStorage.removeItem("bevhubQuoteAccessAt");
+    setIsAuthorized(false);
+    setPasswordInput("");
+  }
+
   const [clientName, setClientName] = useState("Client Name");
   const [annualCases, setAnnualCases] = useState("300000");
   const [productionWeeksPerYear, setProductionWeeksPerYear] = useState("2");
@@ -544,15 +584,72 @@ export default function BevHubQuoteCalculator() {
     }
   }
 
+  if (!isAuthorized) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-950 p-6 text-slate-900">
+        <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-2xl">
+          <div className="mb-6">
+            <h1 className="text-2xl font-semibold">Bev-Hub Quote Tool</h1>
+            <p className="mt-2 text-sm text-slate-600">
+              Enter the internal password to access the Manhattan pricing calculator.
+            </p>
+          </div>
+
+          <label className="block space-y-2">
+            <span className="text-sm font-medium text-slate-700">Password</span>
+            <input
+              type="password"
+              value={passwordInput}
+              onChange={(event) => {
+                setPasswordInput(event.target.value);
+                setLoginError("");
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") handleLogin();
+              }}
+              placeholder="Enter password"
+              className="w-full rounded-xl border px-4 py-3 text-sm"
+              autoFocus
+            />
+          </label>
+
+          {loginError && <div className="mt-3 text-sm font-medium text-red-600">{loginError}</div>}
+
+          <button
+            type="button"
+            onClick={handleLogin}
+            className="mt-5 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800"
+          >
+            Login
+          </button>
+
+          <p className="mt-4 text-xs text-slate-500">
+            Access expires after 8 hours of inactivity or when you log out.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 p-6 text-slate-900">
       <div className="mx-auto max-w-7xl space-y-6">
-        <header>
-          <h1 className="text-3xl font-semibold">Bev-Hub Quote Calculator MHK v4 Included Fix</h1>
-          <p className="text-xs font-semibold text-green-700">Version: Version: MHK Profit Logic Live 2</p>
-          <p className="mt-2 text-sm text-slate-600">
-            Manhattan-only pricing tool. Standard weekly output is 75,000 12-pack cases or 37,500 24-pack cases. Weekly output can be adjusted if operations confirms a different run rate.
-          </p>
+        <header className="flex flex-col gap-4 rounded-2xl border bg-white p-5 shadow-sm md:flex-row md:items-start md:justify-between">
+          <div>
+            <h1 className="text-3xl font-semibold">Bev-Hub Quote Calculator MHK v4 Included Fix</h1>
+            <p className="text-xs font-semibold text-green-700">Version: MHK Profit Logic Live 2</p>
+            <p className="mt-2 text-sm text-slate-600">
+              Manhattan-only pricing tool. Standard weekly output is 75,000 12-pack cases or 37,500 24-pack cases. Weekly output can be adjusted if operations confirms a different run rate.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+          >
+            Logout
+          </button>
         </header>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
