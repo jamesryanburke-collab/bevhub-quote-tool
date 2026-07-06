@@ -317,7 +317,6 @@ export default function BevHubQuoteCalculator() {
     setIsAuthorized(false);
     setPasswordInput("");
   }
-
   const [clientName, setClientName] = useState("Client Name");
   const [annualCases, setAnnualCases] = useState("300000");
   const [productionWeeksPerYear, setProductionWeeksPerYear] = useState("2");
@@ -624,7 +623,7 @@ export default function BevHubQuoteCalculator() {
           </button>
 
           <p className="mt-4 text-xs text-slate-500">
-            Access expires after 8 hours of inactivity or when you log out.
+            Access expires after 8 hours or when you log out.
           </p>
         </div>
       </div>
@@ -636,8 +635,8 @@ export default function BevHubQuoteCalculator() {
       <div className="mx-auto max-w-7xl space-y-6">
         <header className="flex flex-col gap-4 rounded-2xl border bg-white p-5 shadow-sm md:flex-row md:items-start md:justify-between">
           <div>
-            <h1 className="text-3xl font-semibold">Bev-Hub Quote Calculator MHK v4 Included Fix</h1>
-            <p className="text-xs font-semibold text-green-700">Version: MHK Profit Logic Live 2</p>
+            <h1 className="text-3xl font-semibold">Bev-Hub Quote Calculator MHK v5 Login Protected</h1>
+            <p className="text-xs font-semibold text-green-700">Version: MHK Profit Logic Live 3</p>
             <p className="mt-2 text-sm text-slate-600">
               Manhattan-only pricing tool. Standard weekly output is 75,000 12-pack cases or 37,500 24-pack cases. Weekly output can be adjusted if operations confirms a different run rate.
             </p>
