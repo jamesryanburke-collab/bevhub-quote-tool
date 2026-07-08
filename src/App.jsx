@@ -440,6 +440,12 @@ export default function BevHubQuoteCalculator() {
       const dayRecoveryPerCan = cans > 0 ? dayRecoveryFee / cans : 0;
       const customerTolling = baseTolling + dayRecoveryPerCan + flexPremium;
       const pricePerCan = customerTolling + result.materialsPerCan + result.servicesPerCan;
+      const productionTotal = pricePerCan * cans;
+      const flexRevenue = customerTolling * cans;
+      const flexRecoveryPct = minimumRevenue > 0 ? flexRevenue / minimumRevenue - 1 : 0;
+      const flexOperationalGrade = gradeFromPct(flexRecoveryPct);
+      const recommendedFlexTolling = cans > 0 ? minimumRevenue / cans + flexPremium : 0;
+      const flexRecommendedIncreasePct = customerTolling > 0 ? Math.max((recommendedFlexTolling - customerTolling) / customerTolling, 0) : 0;
 
       return {
         programName: "Flex Commercial Production",
@@ -458,9 +464,14 @@ export default function BevHubQuoteCalculator() {
         campaignCans: cans,
         minimumRevenue,
         facilityRate: 0,
-        productionTotal: pricePerCan * cans,
-        totalQuote: pricePerCan * cans,
-        note: "Quoted under Flex Commercial Production due to production being scheduled outside of an annual production agreement and below standard commercial capacity.",
+        productionTotal,
+        totalQuote: productionTotal,
+        flexRevenue,
+        flexRecoveryPct,
+        flexOperationalGrade,
+        recommendedFlexTolling,
+        flexRecommendedIncreasePct,
+        note: "Quoted under Flex Commercial Production due to production being scheduled outside of an annual production agreement and below standard commercial capacity. Flex grade is based on campaign tolling revenue against the minimum day revenue target, not annual contract OH.",
       };
     }
 
@@ -550,9 +561,15 @@ export default function BevHubQuoteCalculator() {
     `Line Weeks Needed: ${result.lineWeeksNeeded.toFixed(2)}`,
     `Annual Capacity Utilization: ${percent(result.utilization)}`,
     pricingProgram === "trial" ? `Daily Facility Fee: ${money(programPricing.facilityRate, 2)}` : "",
+    pricingProgram === "flex" ? `Minimum Day Revenue Target: ${money(programPricing.minimumRevenue, 2)}` : "",
+    pricingProgram === "flex" ? `Flex Revenue: ${money(programPricing.flexRevenue, 2)}` : "",
+    pricingProgram === "flex" ? `Flex Recovery Result: ${percent(programPricing.flexRecoveryPct, 2)}` : "",
+    pricingProgram === "flex" ? `Flex Operational Grade: ${programPricing.flexOperationalGrade}` : "",
+    pricingProgram === "flex" ? `Recommended Flex Tolling: ${money(programPricing.recommendedFlexTolling, 4)} / can` : "",
+    pricingProgram === "flex" ? `Recommended Flex Increase: ${percent(programPricing.flexRecommendedIncreasePct)}` : "",
     `Tolling: ${money(programPricing.customerTolling, 4)} / can`,
-    `Recommended Tolling For Good: ${money(result.recommendedTolling, 4)} / can`,
-    `Recommended Increase: ${percent(result.recommendedIncreasePct)}`,
+    pricingProgram === "annual" ? `Recommended Tolling For Good: ${money(result.recommendedTolling, 4)} / can` : "",
+    pricingProgram === "annual" ? `Recommended Increase: ${percent(result.recommendedIncreasePct)}` : "",
     `Materials Total: ${money(result.materialsPerCan, 4)} / can`,
     `Services Total: ${money(result.servicesPerCan, 4)} / can`,
     `Supplied COGS: ${money(result.suppliedCogsPerCan, 4)} / can`,
@@ -592,6 +609,11 @@ export default function BevHubQuoteCalculator() {
     ["Line Weeks Needed", result.lineWeeksNeeded],
     ["Utilization", percent(result.utilization)],
     ["Daily Facility Fee", pricingProgram === "trial" ? programPricing.facilityRate : ""],
+    ["Flex Revenue", pricingProgram === "flex" ? programPricing.flexRevenue : ""],
+    ["Flex Recovery Result", pricingProgram === "flex" ? percent(programPricing.flexRecoveryPct, 2) : ""],
+    ["Flex Operational Grade", pricingProgram === "flex" ? programPricing.flexOperationalGrade : ""],
+    ["Recommended Flex Tolling", pricingProgram === "flex" ? programPricing.recommendedFlexTolling : ""],
+    ["Recommended Flex Increase", pricingProgram === "flex" ? percent(programPricing.flexRecommendedIncreasePct) : ""],
     ["Customer Tolling Per Can", programPricing.customerTolling],
     ["Estimated Product Total", pricingProgram === "trial" ? programPricing.productionTotal : ""],
     ["Estimated Quote Total", pricingProgram === "trial" ? programPricing.totalQuote : ""],
@@ -603,7 +625,7 @@ export default function BevHubQuoteCalculator() {
     ["Day Recovery Per Can", programPricing.dayRecoveryPerCan],
     ["Flex Premium Per Can", programPricing.flexPremium],
     ["Day Recovery Fee", programPricing.dayRecoveryFee],
-    ["Recommended Tolling For Good", result.recommendedTolling],
+    ["Recommended Tolling For Good", pricingProgram === "annual" ? result.recommendedTolling : ""],
     ["Recommended Increase", percent(result.recommendedIncreasePct)],
     ["Materials Per Can", result.materialsPerCan],
     ["Services Per Can", result.servicesPerCan],
@@ -642,12 +664,16 @@ export default function BevHubQuoteCalculator() {
     `Estimated Total: ${money(programPricing.pricePerCase, 2)} / case`,
     pricingProgram === "trial" ? `Estimated Product Total: ${money(programPricing.productionTotal, 2)}` : "",
     pricingProgram === "trial" ? `Estimated Quote Total: ${money(programPricing.totalQuote, 2)}` : "",
-    `Operational Grade: ${result.operationalGrade}`,
-    `OH Result: ${percent(result.ohResultPct, 2)}`,
-    `After Supplies: ${percent(result.afterSuppliesPct, 2)}`,
-    `Weekly Revenue: ${money(result.weeklyRevenue, 2)}`,
-    `Estimated Weekly Net: ${money(result.estimatedWeeklyNet, 2)}`,
-    `Estimated Whole Run Net: ${money(result.estimatedWholeRunNet, 2)}`,
+    pricingProgram === "annual" ? `Operational Grade: ${result.operationalGrade}` : "",
+    pricingProgram === "annual" ? `OH Result: ${percent(result.ohResultPct, 2)}` : "",
+    pricingProgram === "annual" ? `After Supplies: ${percent(result.afterSuppliesPct, 2)}` : "",
+    pricingProgram === "flex" ? `Flex Operational Grade: ${programPricing.flexOperationalGrade}` : "",
+    pricingProgram === "flex" ? `Flex Recovery Result: ${percent(programPricing.flexRecoveryPct, 2)}` : "",
+    pricingProgram === "trial" ? `Trial Operational Grade: ${programPricing.trialOperationalGrade}` : "",
+    pricingProgram === "trial" ? `Trial Recovery Result: ${percent(programPricing.trialRecoveryPct, 2)}` : "",
+    pricingProgram === "annual" ? `Weekly Revenue: ${money(result.weeklyRevenue, 2)}` : "",
+    pricingProgram === "annual" ? `Estimated Weekly Net: ${money(result.estimatedWeeklyNet, 2)}` : "",
+    pricingProgram === "annual" ? `Estimated Whole Run Net: ${money(result.estimatedWholeRunNet, 2)}` : "",
     customTermLines.length ? `Custom Terms:\n${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
   ].filter(Boolean).join("\n");
 
@@ -788,7 +814,7 @@ export default function BevHubQuoteCalculator() {
       <div className="mx-auto max-w-7xl space-y-6">
         <header className="flex flex-col gap-4 rounded-2xl border bg-white p-5 shadow-sm md:flex-row md:items-start md:justify-between">
           <div>
-            <h1 className="text-3xl font-semibold">Bev-Hub Quote Calculator MHK v6.2 Trial Recovery Grade</h1>
+            <h1 className="text-3xl font-semibold">Bev-Hub Quote Calculator MHK v6.3 Flex Recovery Fix</h1>
             <p className="text-xs font-semibold text-green-700">Version: MHK Pricing Programs Live 2</p>
             <p className="mt-2 text-sm text-slate-600">
               Manhattan-only pricing tool. Standard weekly output is 75,000 12-pack cases or 37,500 24-pack cases. Weekly output can be adjusted if operations confirms a different run rate.
@@ -940,23 +966,30 @@ export default function BevHubQuoteCalculator() {
                 {pricingProgram === "trial" && <Output label="Estimated Quote Total" value={money(programPricing.totalQuote, 2)} />}
                 {pricingProgram === "trial" && <Output label="Trial Operational Grade" value={programPricing.trialOperationalGrade} />}
                 {pricingProgram === "trial" && <Output label="Trial Recovery Result" value={percent(programPricing.trialRecoveryPct, 2)} />}
+
+                {pricingProgram === "flex" && <Output label="Flex Revenue" value={money(programPricing.flexRevenue, 2)} />}
+                {pricingProgram === "flex" && <Output label="Minimum Day Revenue Target" value={money(programPricing.minimumRevenue, 2)} />}
+                {pricingProgram === "flex" && <Output label="Flex Recovery Result" value={percent(programPricing.flexRecoveryPct, 2)} />}
+                {pricingProgram === "flex" && <Output label="Flex Operational Grade" value={programPricing.flexOperationalGrade} />}
+                {pricingProgram === "flex" && <Output label="Recommended Flex Tolling" value={`${money(programPricing.recommendedFlexTolling, 4)} / can`} />}
+                {pricingProgram === "flex" && <Output label="Recommended Flex Increase" value={percent(programPricing.flexRecommendedIncreasePct)} />}
+
                 <Output label="Tolling" value={`${money(programPricing.customerTolling, 4)} / can`} />
-                <Output label="Recommended Tolling For Good" value={`${money(result.recommendedTolling, 4)} / can`} />
-                <Output label="Recommended Increase" value={percent(result.recommendedIncreasePct)} />
-                <Output label="Operational Grade" value={result.operationalGrade} />
-                <Output label="OH Result" value={percent(result.ohResultPct, 2)} />
-                <Output label="After Supplies" value={percent(result.afterSuppliesPct, 2)} />
                 <Output label="Materials" value={`${money(result.materialsPerCan, 4)} / can`} />
                 <Output label="Supplied COGS" value={`${money(result.suppliedCogsPerCan, 4)} / can`} />
                 <Output label="Additional Services" value={`${money(result.servicesPerCan, 4)} / can`} />
                 <Output label="Estimated Total" value={`${money(programPricing.pricePerCan, 4)} / can`} />
                 <Output label="Estimated Total" value={`${money(programPricing.pricePerCase, 2)} / case`} />
-                {pricingProgram === "trial" && <Output label="Estimated Product Total" value={money(programPricing.productionTotal, 2)} />}
-                {pricingProgram === "trial" && <Output label="Estimated Quote Total" value={money(programPricing.totalQuote, 2)} />}
-                <Output label="Weekly Revenue" value={money(result.weeklyRevenue, 2)} />
-                <Output label="Weekly COGS Estimate" value={money(result.weeklyCogsEstimate, 2)} />
-                <Output label="Est. Week Net Inc." value={money(result.estimatedWeeklyNet, 2)} />
-                <Output label="Estimated Whole Run Net" value={money(result.estimatedWholeRunNet, 2)} />
+
+                {pricingProgram === "annual" && <Output label="Recommended Tolling For Good" value={`${money(result.recommendedTolling, 4)} / can`} />}
+                {pricingProgram === "annual" && <Output label="Recommended Increase" value={percent(result.recommendedIncreasePct)} />}
+                {pricingProgram === "annual" && <Output label="Operational Grade" value={result.operationalGrade} />}
+                {pricingProgram === "annual" && <Output label="OH Result" value={percent(result.ohResultPct, 2)} />}
+                {pricingProgram === "annual" && <Output label="After Supplies" value={percent(result.afterSuppliesPct, 2)} />}
+                {pricingProgram === "annual" && <Output label="Weekly Revenue" value={money(result.weeklyRevenue, 2)} />}
+                {pricingProgram === "annual" && <Output label="Weekly COGS Estimate" value={money(result.weeklyCogsEstimate, 2)} />}
+                {pricingProgram === "annual" && <Output label="Est. Week Net Inc." value={money(result.estimatedWeeklyNet, 2)} />}
+                {pricingProgram === "annual" && <Output label="Estimated Whole Run Net" value={money(result.estimatedWholeRunNet, 2)} />}
                 <Output label="Weekly Output Assumption" value={`${whole(result.maxWeeklyCases)} cases`} />
               </div>
             </Panel>
@@ -969,6 +1002,10 @@ export default function BevHubQuoteCalculator() {
                 {pricingProgram === "flex" && <Output label="Minimum Day Revenue Target" value={money(programPricing.minimumRevenue, 2)} />}
                 {pricingProgram === "flex" && <Output label="Base Revenue" value={money(programPricing.baseRevenue, 2)} />}
                 {pricingProgram === "flex" && <Output label="Day Recovery Fee" value={money(programPricing.dayRecoveryFee, 2)} />}
+                {pricingProgram === "flex" && <Output label="Day Recovery $ / Can" value={`${money(programPricing.dayRecoveryPerCan, 4)} / can`} />}
+                {pricingProgram === "flex" && <Output label="Flex Premium $ / Can" value={`${money(programPricing.flexPremium, 4)} / can`} />}
+                {pricingProgram === "flex" && <Output label="Final Flex Revenue" value={money(programPricing.flexRevenue, 2)} />}
+                {pricingProgram === "flex" && <Output label="Flex Operational Grade" value={programPricing.flexOperationalGrade} />}
                 {pricingProgram === "trial" && <Output label="Daily Facility Fee" value={money(programPricing.facilityRate, 2)} />}
                 {pricingProgram === "trial" && <Output label="Estimated Product Total" value={money(programPricing.productionTotal, 2)} />}
                 {pricingProgram === "trial" && <Output label="Estimated Quote Total" value={money(programPricing.totalQuote, 2)} />}
