@@ -451,6 +451,8 @@ export default function BevHubQuoteCalculator() {
         campaignCans: cans,
         minimumRevenue,
         facilityRate: 0,
+        productionTotal: pricePerCan * cans,
+        totalQuote: pricePerCan * cans,
         note: "Quoted under Flex Commercial Production due to production being scheduled outside of an annual production agreement and below standard commercial capacity.",
       };
     }
@@ -458,12 +460,13 @@ export default function BevHubQuoteCalculator() {
     if (pricingProgram === "trial") {
       const cansForTrial = Math.max(toNumber(trialExpectedCans, 0), 0);
       const facilityRate = Math.max(toNumber(trialFacilityRate, 0), 0);
-      const facilityRatePerCan = cansForTrial > 0 ? facilityRate / cansForTrial : 0;
-      const customerTolling = facilityRatePerCan + result.includedInToll;
+      const customerTolling = baseTolling;
       const pricePerCan = customerTolling + result.materialsPerCan + result.servicesPerCan;
+      const productionTotal = pricePerCan * cansForTrial;
+      const totalQuote = facilityRate + productionTotal;
 
       return {
-        programName: "Trial / Feasibility",
+        programName: "Commercial Trial Program",
         volumeLabel: "Trial Volume",
         volumeValue: `${whole(cansForTrial)} cans`,
         periodLabel: "Trial Days Reserved",
@@ -471,15 +474,17 @@ export default function BevHubQuoteCalculator() {
         customerTolling,
         pricePerCan,
         pricePerCase: pricePerCan * result.casePack,
-        baseTolling: result.includedInToll,
-        baseRevenue: 0,
+        baseTolling: customerTolling,
+        baseRevenue: customerTolling * cansForTrial,
         dayRecoveryFee: 0,
         dayRecoveryPerCan: 0,
         flexPremium: 0,
         campaignCans: cansForTrial,
         minimumRevenue: facilityRate,
         facilityRate,
-        note: "Quoted as a trial / feasibility production day. Facility rate excludes consumable materials unless otherwise stated.",
+        productionTotal,
+        totalQuote,
+        note: "Quoted under the Commercial Trial Program with the daily facility fee shown as a separate line item. Tolling remains independent from the facility fee, and consumable materials are excluded unless otherwise stated.",
       };
     }
 
@@ -512,7 +517,7 @@ export default function BevHubQuoteCalculator() {
     trialExpectedCans,
   ]);
 
-  const clientQuoteHtml = `<!doctype html><html><head><title>Manufacturing Quote - ${escapeHtml(clientName)}</title><style>body{font-family:Calibri,Arial,sans-serif;color:#0f172a;padding:32px}.page{max-width:850px;margin:0 auto;border:1px solid #cbd5e1;padding:36px}h1{font-size:30px;margin:0}h2{font-size:18px;border-bottom:1px solid #cbd5e1;padding-bottom:6px;margin-top:28px}.muted{color:#64748b;font-size:13px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:28px}.line{display:flex;justify-content:space-between;gap:24px;padding:3px 0;font-size:14px}.strong{font-weight:700}.notes{border-top:1px solid #cbd5e1;margin-top:28px;padding-top:18px;font-size:12px;line-height:1.55;color:#475569}.signature{display:grid;grid-template-columns:1fr 1fr;gap:48px;margin-top:32px;font-size:14px}.sigline{border-bottom:1px solid #475569;height:24px;margin-bottom:18px}@media print{body{padding:0}.page{border:none}}</style></head><body><div class="page"><h1>Manufacturing Quote</h1><div class="muted">Manhattan, KS production estimate</div><div class="grid" style="margin-top:20px;"><div class="line"><span>Client</span><span class="strong">${escapeHtml(clientName)}</span></div><div class="line"><span>Package</span><span class="strong">${escapeHtml(canSize)}</span></div><div class="line"><span>Case Pack</span><span class="strong">${result.casePack} pack</span></div></div><div class="grid"><div><h2>Volume Assumptions</h2><div class="line"><span>${programPricing.volumeLabel}</span><span class="strong">${programPricing.volumeValue}</span></div><div class="line"><span>${programPricing.periodLabel}</span><span class="strong">${programPricing.periodValue}</span></div><div class="line"><span>Cases / Production Week</span><span class="strong">${whole(result.weeklyCases)}</span></div><div class="line"><span>Line Weeks Needed</span><span class="strong">${result.lineWeeksNeeded.toFixed(2)}</span></div></div><div><h2>Pricing Estimate</h2><div class="line"><span>Tolling</span><span class="strong">${money(programPricing.customerTolling, 4)} / can</span></div><div class="line"><span>Materials and Packaging</span><span class="strong">${money(result.materialsPerCan, 4)} / can</span></div><div class="line"><span>Additional Services</span><span class="strong">${money(result.servicesPerCan, 4)} / can</span></div><div class="line"><span>Estimated Total</span><span class="strong">${money(programPricing.pricePerCan, 4)} / can</span></div><div class="line"><span>Estimated Total</span><span class="strong">${money(programPricing.pricePerCase, 2)} / case</span></div></div></div><h2>Materials and Services</h2><div class="grid"><div class="line"><span>Cans and Ends</span><span class="strong">${modeLabel(canEndMode)}</span></div><div class="line"><span>Trays</span><span class="strong">${modeLabel(trayMode)}</span></div><div class="line"><span>Case Labels</span><span class="strong">${modeLabel(caseLabelMode)}</span></div><div class="line"><span>Pallet Materials</span><span class="strong">${modeLabel(palletMode)}</span></div><div class="line"><span>Sleeve Application</span><span class="strong">${modeLabel(sleeveMode)}</span></div><div class="line"><span>Carton Application</span><span class="strong">${modeLabel(cartonMode)}</span></div></div><div class="notes"><p>*This quote is based on the production scope, packaging configuration, and assumptions outlined above. Final pricing is subject to confirmation of product specifications, packaging requirements, production schedule, and executed commercial agreement.</p><p>*Acceptance of this quotation constitutes the client's obligation to issue a production purchase order (PO) for each authorized production run.</p><p>*Bev-Hub has not produced this product previously and pricing is based on the information provided during the quoting process.</p><p>*Bev-Hub will manufacture strictly to the client-approved formulation and specifications. Bev-Hub assumes no responsibility for formulation performance, stability, or market outcomes, provided production is completed without human error or equipment malfunction.</p><p>*Standard commercialization through Process Authority is estimated at $3,000 per SKU.</p>${customTermsHtml}<h2>Warehousing</h2><p>Pallets In: $15 / pallet raw goods<br/>Cold Storage: $20 / pallet<br/>Pallets Out: $8 / pallet finished goods<br/>Pallet Storage: $15 / pallet per month</p></div><div class="signature"><div><div>Client</div><div class="sigline"></div><div>Name</div><div class="sigline"></div><div>PO Number</div><div class="sigline"></div></div><div><div>Bev-Hub</div><div class="sigline"></div><div>Name</div><div class="sigline"></div></div></div></div></body></html>`;
+  const clientQuoteHtml = `<!doctype html><html><head><title>Manufacturing Quote - ${escapeHtml(clientName)}</title><style>body{font-family:Calibri,Arial,sans-serif;color:#0f172a;padding:32px}.page{max-width:850px;margin:0 auto;border:1px solid #cbd5e1;padding:36px}h1{font-size:30px;margin:0}h2{font-size:18px;border-bottom:1px solid #cbd5e1;padding-bottom:6px;margin-top:28px}.muted{color:#64748b;font-size:13px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:28px}.line{display:flex;justify-content:space-between;gap:24px;padding:3px 0;font-size:14px}.strong{font-weight:700}.notes{border-top:1px solid #cbd5e1;margin-top:28px;padding-top:18px;font-size:12px;line-height:1.55;color:#475569}.signature{display:grid;grid-template-columns:1fr 1fr;gap:48px;margin-top:32px;font-size:14px}.sigline{border-bottom:1px solid #475569;height:24px;margin-bottom:18px}@media print{body{padding:0}.page{border:none}}</style></head><body><div class="page"><h1>Manufacturing Quote</h1><div class="muted">Manhattan, KS production estimate</div><div class="grid" style="margin-top:20px;"><div class="line"><span>Client</span><span class="strong">${escapeHtml(clientName)}</span></div><div class="line"><span>Package</span><span class="strong">${escapeHtml(canSize)}</span></div><div class="line"><span>Case Pack</span><span class="strong">${result.casePack} pack</span></div></div><div class="grid"><div><h2>Volume Assumptions</h2><div class="line"><span>${programPricing.volumeLabel}</span><span class="strong">${programPricing.volumeValue}</span></div><div class="line"><span>${programPricing.periodLabel}</span><span class="strong">${programPricing.periodValue}</span></div><div class="line"><span>Cases / Production Week</span><span class="strong">${whole(result.weeklyCases)}</span></div><div class="line"><span>Line Weeks Needed</span><span class="strong">${result.lineWeeksNeeded.toFixed(2)}</span></div></div><div><h2>Pricing Estimate</h2>${pricingProgram === "trial" ? `<div class="line"><span>Daily Facility Fee</span><span class="strong">${money(programPricing.facilityRate, 2)}</span></div>` : ""}<div class="line"><span>Tolling</span><span class="strong">${money(programPricing.customerTolling, 4)} / can</span></div><div class="line"><span>Materials and Packaging</span><span class="strong">${money(result.materialsPerCan, 4)} / can</span></div><div class="line"><span>Additional Services</span><span class="strong">${money(result.servicesPerCan, 4)} / can</span></div><div class="line"><span>Estimated Product Total</span><span class="strong">${money(programPricing.pricePerCan, 4)} / can</span></div><div class="line"><span>Estimated Product Total</span><span class="strong">${money(programPricing.pricePerCase, 2)} / case</span></div>${pricingProgram === "trial" ? `<div class="line"><span>Estimated Quote Total</span><span class="strong">${money(programPricing.totalQuote, 2)}</span></div>` : ""}</div></div><h2>Materials and Services</h2><div class="grid"><div class="line"><span>Cans and Ends</span><span class="strong">${modeLabel(canEndMode)}</span></div><div class="line"><span>Trays</span><span class="strong">${modeLabel(trayMode)}</span></div><div class="line"><span>Case Labels</span><span class="strong">${modeLabel(caseLabelMode)}</span></div><div class="line"><span>Pallet Materials</span><span class="strong">${modeLabel(palletMode)}</span></div><div class="line"><span>Sleeve Application</span><span class="strong">${modeLabel(sleeveMode)}</span></div><div class="line"><span>Carton Application</span><span class="strong">${modeLabel(cartonMode)}</span></div></div><div class="notes"><p>*This quote is based on the production scope, packaging configuration, and assumptions outlined above. Final pricing is subject to confirmation of product specifications, packaging requirements, production schedule, and executed commercial agreement.</p><p>*Acceptance of this quotation constitutes the client's obligation to issue a production purchase order (PO) for each authorized production run.</p><p>*Bev-Hub has not produced this product previously and pricing is based on the information provided during the quoting process.</p><p>*Bev-Hub will manufacture strictly to the client-approved formulation and specifications. Bev-Hub assumes no responsibility for formulation performance, stability, or market outcomes, provided production is completed without human error or equipment malfunction.</p><p>*Standard commercialization through Process Authority is estimated at $3,000 per SKU.</p>${customTermsHtml}<h2>Warehousing</h2><p>Pallets In: $15 / pallet raw goods<br/>Cold Storage: $20 / pallet<br/>Pallets Out: $8 / pallet finished goods<br/>Pallet Storage: $15 / pallet per month</p></div><div class="signature"><div><div>Client</div><div class="sigline"></div><div>Name</div><div class="sigline"></div><div>PO Number</div><div class="sigline"></div></div><div><div>Bev-Hub</div><div class="sigline"></div><div>Name</div><div class="sigline"></div></div></div></div></body></html>`;
 
   const internalSummaryText = [
     "Internal Manhattan Quote Calculation Summary",
@@ -527,6 +532,7 @@ export default function BevHubQuoteCalculator() {
     `Max Weekly Capacity: ${whole(result.maxWeeklyCases)} cases`,
     `Line Weeks Needed: ${result.lineWeeksNeeded.toFixed(2)}`,
     `Annual Capacity Utilization: ${percent(result.utilization)}`,
+    pricingProgram === "trial" ? `Daily Facility Fee: ${money(programPricing.facilityRate, 2)}` : "",
     `Tolling: ${money(programPricing.customerTolling, 4)} / can`,
     `Recommended Tolling For Good: ${money(result.recommendedTolling, 4)} / can`,
     `Recommended Increase: ${percent(result.recommendedIncreasePct)}`,
@@ -535,6 +541,7 @@ export default function BevHubQuoteCalculator() {
     `Supplied COGS: ${money(result.suppliedCogsPerCan, 4)} / can`,
     `Estimated Total: ${money(programPricing.pricePerCan, 4)} / can`,
     `Estimated Total: ${money(programPricing.pricePerCase, 2)} / case`,
+    pricingProgram === "trial" ? `Estimated Quote Total: ${money(programPricing.totalQuote, 2)}` : "",
     `Weekly Revenue: ${money(result.weeklyRevenue, 2)}`,
     `Weekly COGS Estimate: ${money(result.weeklyCogsEstimate, 2)}`,
     `Estimated Weekly Net: ${money(result.estimatedWeeklyNet, 2)}`,
@@ -548,7 +555,7 @@ export default function BevHubQuoteCalculator() {
   ].filter(Boolean).join("\n");
 
 
-  const internalFinancialHtml = `<!doctype html><html><head><title>Internal Financial Summary - ${escapeHtml(clientName)}</title><style>body{font-family:Calibri,Arial,sans-serif;color:#0f172a;padding:32px}.page{max-width:900px;margin:0 auto;border:1px solid #cbd5e1;padding:36px}h1{font-size:30px;margin:0}h2{font-size:18px;border-bottom:1px solid #cbd5e1;padding-bottom:6px;margin-top:28px}.muted{color:#64748b;font-size:13px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:28px}.line{display:flex;justify-content:space-between;gap:24px;padding:4px 0;font-size:14px}.strong{font-weight:700}.alert{background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;padding:14px;margin-top:18px}.notes{border-top:1px solid #cbd5e1;margin-top:28px;padding-top:18px;font-size:12px;line-height:1.55;color:#475569}@media print{body{padding:0}.page{border:none}}</style></head><body><div class="page"><h1>Internal Financial Summary</h1><div class="muted">Manhattan, KS profitability review. Internal use only.</div><div class="grid" style="margin-top:20px;"><div><h2>Quote Setup</h2><div class="line"><span>Client</span><span class="strong">${escapeHtml(clientName)}</span></div><div class="line"><span>Package</span><span class="strong">${escapeHtml(canSize)}</span></div><div class="line"><span>Case Pack</span><span class="strong">${result.casePack} pack</span></div><div class="line"><span>${programPricing.volumeLabel}</span><span class="strong">${programPricing.volumeValue}</span></div><div class="line"><span>${programPricing.periodLabel}</span><span class="strong">${programPricing.periodValue}</span></div><div class="line"><span>Cases / Production Week</span><span class="strong">${whole(result.weeklyCases)}</span></div></div><div><h2>Pricing</h2><div class="line"><span>Tolling</span><span class="strong">${money(programPricing.customerTolling, 4)} / can</span></div><div class="line"><span>Recommended Tolling For Good</span><span class="strong">${money(result.recommendedTolling, 4)} / can</span></div><div class="line"><span>Recommended Increase</span><span class="strong">${percent(result.recommendedIncreasePct)}</span></div><div class="line"><span>Total Price / Can</span><span class="strong">${money(programPricing.pricePerCan, 4)}</span></div><div class="line"><span>Total Price / Case</span><span class="strong">${money(programPricing.pricePerCase, 2)}</span></div></div></div><h2>Operational Profitability</h2><div class="grid"><div class="line"><span>Operational Grade</span><span class="strong">${result.operationalGrade}</span></div><div class="line"><span>OH Result</span><span class="strong">${percent(result.ohResultPct, 2)}</span></div><div class="line"><span>After Supplies</span><span class="strong">${percent(result.afterSuppliesPct, 2)}</span></div><div class="line"><span>Weekly Revenue</span><span class="strong">${money(result.weeklyRevenue, 2)}</span></div><div class="line"><span>Weekly COGS Estimate</span><span class="strong">${money(result.weeklyCogsEstimate, 2)}</span></div><div class="line"><span>Estimated Weekly Net</span><span class="strong">${money(result.estimatedWeeklyNet, 2)}</span></div><div class="line"><span>Estimated Whole Run Net</span><span class="strong">${money(result.estimatedWholeRunNet, 2)}</span></div><div class="line"><span>Annual Revenue</span><span class="strong">${money(result.annualRevenue, 2)}</span></div></div><h2>Cost and Capacity Detail</h2><div class="grid"><div class="line"><span>Materials / Can</span><span class="strong">${money(result.materialsPerCan, 4)}</span></div><div class="line"><span>Services / Can</span><span class="strong">${money(result.servicesPerCan, 4)}</span></div><div class="line"><span>Supplied COGS / Can</span><span class="strong">${money(result.suppliedCogsPerCan, 4)}</span></div><div class="line"><span>Included In Tolling / Can</span><span class="strong">${money(result.includedInToll, 4)}</span></div><div class="line"><span>Low Weekly OH</span><span class="strong">${money(result.lowWeeklyOH, 2)}</span></div><div class="line"><span>High Weekly OH</span><span class="strong">${money(result.highWeeklyOH, 2)}</span></div><div class="line"><span>Weekly Capacity Assumption</span><span class="strong">${whole(result.maxWeeklyCases)} cases</span></div><div class="line"><span>Line Weeks Needed</span><span class="strong">${result.lineWeeksNeeded.toFixed(2)}</span></div></div><div class="alert"><div class="strong">Review Status: ${result.status}</div><div>${escapeHtml(result.statusNote)}</div></div><div class="notes"><p>This financial summary is for internal Bev-Hub review only and should not be shared externally.</p></div></div></body></html>`;
+  const internalFinancialHtml = `<!doctype html><html><head><title>Internal Financial Summary - ${escapeHtml(clientName)}</title><style>body{font-family:Calibri,Arial,sans-serif;color:#0f172a;padding:32px}.page{max-width:900px;margin:0 auto;border:1px solid #cbd5e1;padding:36px}h1{font-size:30px;margin:0}h2{font-size:18px;border-bottom:1px solid #cbd5e1;padding-bottom:6px;margin-top:28px}.muted{color:#64748b;font-size:13px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:28px}.line{display:flex;justify-content:space-between;gap:24px;padding:4px 0;font-size:14px}.strong{font-weight:700}.alert{background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;padding:14px;margin-top:18px}.notes{border-top:1px solid #cbd5e1;margin-top:28px;padding-top:18px;font-size:12px;line-height:1.55;color:#475569}@media print{body{padding:0}.page{border:none}}</style></head><body><div class="page"><h1>Internal Financial Summary</h1><div class="muted">Manhattan, KS profitability review. Internal use only.</div><div class="grid" style="margin-top:20px;"><div><h2>Quote Setup</h2><div class="line"><span>Client</span><span class="strong">${escapeHtml(clientName)}</span></div><div class="line"><span>Package</span><span class="strong">${escapeHtml(canSize)}</span></div><div class="line"><span>Case Pack</span><span class="strong">${result.casePack} pack</span></div><div class="line"><span>${programPricing.volumeLabel}</span><span class="strong">${programPricing.volumeValue}</span></div><div class="line"><span>${programPricing.periodLabel}</span><span class="strong">${programPricing.periodValue}</span></div><div class="line"><span>Cases / Production Week</span><span class="strong">${whole(result.weeklyCases)}</span></div></div><div><h2>Pricing</h2>${pricingProgram === "trial" ? `<div class="line"><span>Daily Facility Fee</span><span class="strong">${money(programPricing.facilityRate, 2)}</span></div>` : ""}<div class="line"><span>Tolling</span><span class="strong">${money(programPricing.customerTolling, 4)} / can</span></div><div class="line"><span>Recommended Tolling For Good</span><span class="strong">${money(result.recommendedTolling, 4)} / can</span></div><div class="line"><span>Recommended Increase</span><span class="strong">${percent(result.recommendedIncreasePct)}</span></div><div class="line"><span>Total Price / Can</span><span class="strong">${money(programPricing.pricePerCan, 4)}</span></div><div class="line"><span>Total Price / Case</span><span class="strong">${money(programPricing.pricePerCase, 2)}</span></div>${pricingProgram === "trial" ? `<div class="line"><span>Estimated Quote Total</span><span class="strong">${money(programPricing.totalQuote, 2)}</span></div>` : ""}</div></div><h2>Operational Profitability</h2><div class="grid"><div class="line"><span>Operational Grade</span><span class="strong">${result.operationalGrade}</span></div><div class="line"><span>OH Result</span><span class="strong">${percent(result.ohResultPct, 2)}</span></div><div class="line"><span>After Supplies</span><span class="strong">${percent(result.afterSuppliesPct, 2)}</span></div><div class="line"><span>Weekly Revenue</span><span class="strong">${money(result.weeklyRevenue, 2)}</span></div><div class="line"><span>Weekly COGS Estimate</span><span class="strong">${money(result.weeklyCogsEstimate, 2)}</span></div><div class="line"><span>Estimated Weekly Net</span><span class="strong">${money(result.estimatedWeeklyNet, 2)}</span></div><div class="line"><span>Estimated Whole Run Net</span><span class="strong">${money(result.estimatedWholeRunNet, 2)}</span></div><div class="line"><span>Annual Revenue</span><span class="strong">${money(result.annualRevenue, 2)}</span></div></div><h2>Cost and Capacity Detail</h2><div class="grid"><div class="line"><span>Materials / Can</span><span class="strong">${money(result.materialsPerCan, 4)}</span></div><div class="line"><span>Services / Can</span><span class="strong">${money(result.servicesPerCan, 4)}</span></div><div class="line"><span>Supplied COGS / Can</span><span class="strong">${money(result.suppliedCogsPerCan, 4)}</span></div><div class="line"><span>Included In Tolling / Can</span><span class="strong">${money(result.includedInToll, 4)}</span></div><div class="line"><span>Low Weekly OH</span><span class="strong">${money(result.lowWeeklyOH, 2)}</span></div><div class="line"><span>High Weekly OH</span><span class="strong">${money(result.highWeeklyOH, 2)}</span></div><div class="line"><span>Weekly Capacity Assumption</span><span class="strong">${whole(result.maxWeeklyCases)} cases</span></div><div class="line"><span>Line Weeks Needed</span><span class="strong">${result.lineWeeksNeeded.toFixed(2)}</span></div></div><div class="alert"><div class="strong">Review Status: ${result.status}</div><div>${escapeHtml(result.statusNote)}</div></div><div class="notes"><p>This financial summary is for internal Bev-Hub review only and should not be shared externally.</p></div></div></body></html>`;
 
   const csvText = csvRowsToText([
     ["Field", "Value"],
@@ -563,7 +570,9 @@ export default function BevHubQuoteCalculator() {
     ["Max Weekly Capacity", result.maxWeeklyCases],
     ["Line Weeks Needed", result.lineWeeksNeeded],
     ["Utilization", percent(result.utilization)],
+    ["Daily Facility Fee", pricingProgram === "trial" ? programPricing.facilityRate : ""],
     ["Customer Tolling Per Can", programPricing.customerTolling],
+    ["Estimated Quote Total", pricingProgram === "trial" ? programPricing.totalQuote : ""],
     ["Base Tolling Per Can", programPricing.baseTolling],
     ["Day Recovery Per Can", programPricing.dayRecoveryPerCan],
     ["Flex Premium Per Can", programPricing.flexPremium],
@@ -749,8 +758,8 @@ export default function BevHubQuoteCalculator() {
       <div className="mx-auto max-w-7xl space-y-6">
         <header className="flex flex-col gap-4 rounded-2xl border bg-white p-5 shadow-sm md:flex-row md:items-start md:justify-between">
           <div>
-            <h1 className="text-3xl font-semibold">Bev-Hub Quote Calculator MHK v6 Pricing Modes</h1>
-            <p className="text-xs font-semibold text-green-700">Version: MHK Profit Logic Live 3</p>
+            <h1 className="text-3xl font-semibold">Bev-Hub Quote Calculator MHK v6 Trial Pricing</h1>
+            <p className="text-xs font-semibold text-green-700">Version: MHK Pricing Programs Live 1</p>
             <p className="mt-2 text-sm text-slate-600">
               Manhattan-only pricing tool. Standard weekly output is 75,000 12-pack cases or 37,500 24-pack cases. Weekly output can be adjusted if operations confirms a different run rate.
             </p>
@@ -776,7 +785,7 @@ export default function BevHubQuoteCalculator() {
                 value={pricingProgram}
                 onChange={setPricingProgram}
                 options={["annual", "flex", "trial"]}
-                labels={{ annual: "Annual Contract", flex: "Flex Commercial Production", trial: "Trial / Feasibility" }}
+                labels={{ annual: "Annual Contract", flex: "Flex Commercial Production", trial: "Commercial Trial Program" }}
               />
 
               {pricingProgram === "flex" && (
@@ -793,10 +802,10 @@ export default function BevHubQuoteCalculator() {
 
               {pricingProgram === "trial" && (
                 <div className="rounded-xl border p-4">
-                  <h3 className="mb-3 text-sm font-semibold">Trial / Feasibility</h3>
-                  <p className="mb-3 text-xs text-slate-500">Used for a scheduled trial day with a fixed facility rate plus consumables.</p>
+                  <h3 className="mb-3 text-sm font-semibold">Commercial Trial Program</h3>
+                  <p className="mb-3 text-xs text-slate-500">Used for a scheduled commercial trial day with a separate daily facility fee plus independent tolling and consumables.</p>
                   <div className="grid grid-cols-2 gap-3">
-                    <TextInput label="Daily Facility Rate" value={trialFacilityRate} onChange={setTrialFacilityRate} type="number" />
+                    <TextInput label="Daily Facility Fee" value={trialFacilityRate} onChange={setTrialFacilityRate} type="number" />
                     <TextInput label="Expected Cans" value={trialExpectedCans} onChange={setTrialExpectedCans} type="number" />
                   </div>
                 </div>
@@ -894,6 +903,7 @@ export default function BevHubQuoteCalculator() {
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {pricingProgram === "trial" && <Output label="Daily Facility Fee" value={money(programPricing.facilityRate, 2)} />}
                 <Output label="Tolling" value={`${money(programPricing.customerTolling, 4)} / can`} />
                 <Output label="Recommended Tolling For Good" value={`${money(result.recommendedTolling, 4)} / can`} />
                 <Output label="Recommended Increase" value={percent(result.recommendedIncreasePct)} />
@@ -905,6 +915,7 @@ export default function BevHubQuoteCalculator() {
                 <Output label="Additional Services" value={`${money(result.servicesPerCan, 4)} / can`} />
                 <Output label="Estimated Total" value={`${money(programPricing.pricePerCan, 4)} / can`} />
                 <Output label="Estimated Total" value={`${money(programPricing.pricePerCase, 2)} / case`} />
+                {pricingProgram === "trial" && <Output label="Estimated Quote Total" value={money(programPricing.totalQuote, 2)} />}
                 <Output label="Weekly Revenue" value={money(result.weeklyRevenue, 2)} />
                 <Output label="Weekly COGS Estimate" value={money(result.weeklyCogsEstimate, 2)} />
                 <Output label="Est. Week Net Inc." value={money(result.estimatedWeeklyNet, 2)} />
@@ -920,7 +931,7 @@ export default function BevHubQuoteCalculator() {
                 {pricingProgram === "flex" && <Output label="Minimum Day Revenue Target" value={money(programPricing.minimumRevenue, 2)} />}
                 {pricingProgram === "flex" && <Output label="Base Revenue" value={money(programPricing.baseRevenue, 2)} />}
                 {pricingProgram === "flex" && <Output label="Day Recovery Fee" value={money(programPricing.dayRecoveryFee, 2)} />}
-                {pricingProgram === "trial" && <Output label="Facility Rate" value={money(programPricing.facilityRate, 2)} />}
+                {pricingProgram === "trial" && <Output label="Daily Facility Fee" value={money(programPricing.facilityRate, 2)} />}
               </div>
               <p className="mt-3 text-sm text-slate-600">{programPricing.note}</p>
             </Panel>
@@ -968,11 +979,13 @@ export default function BevHubQuoteCalculator() {
               </div>
               <div>
                 <h4 className="mb-3 border-b pb-2 text-lg font-semibold">Pricing Estimate</h4>
+                {pricingProgram === "trial" && <QuoteLine label="Daily Facility Fee" value={money(programPricing.facilityRate, 2)} />}
                 <QuoteLine label="Tolling" value={`${money(programPricing.customerTolling, 4)} / can`} />
                 <QuoteLine label="Materials and Packaging" value={`${money(result.materialsPerCan, 4)} / can`} />
                 <QuoteLine label="Additional Services" value={`${money(result.servicesPerCan, 4)} / can`} />
                 <QuoteLine label="Estimated Total" value={`${money(programPricing.pricePerCan, 4)} / can`} strong />
                 <QuoteLine label="Estimated Total" value={`${money(programPricing.pricePerCase, 2)} / case`} strong />
+                {pricingProgram === "trial" && <QuoteLine label="Estimated Quote Total" value={money(programPricing.totalQuote, 2)} strong />}
               </div>
             </div>
 
