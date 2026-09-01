@@ -375,11 +375,31 @@ export default function BevHubQuoteCalculator() {
     }
   });
 
+  const [savedQuotes, setSavedQuotes] = useState(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const saved = JSON.parse(window.localStorage.getItem("bevhubSavedQuotes") || "[]");
+      return Array.isArray(saved) ? saved : [];
+    } catch {
+      return [];
+    }
+  });
+  const [savedQuoteSearch, setSavedQuoteSearch] = useState("");
+  const [savedQuoteStatusFilter, setSavedQuoteStatusFilter] = useState("All");
+  const [activeSavedQuoteId, setActiveSavedQuoteId] = useState(null);
+  const [saveNotice, setSaveNotice] = useState("");
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       window.localStorage.setItem("bevhubQuoteDisplay", JSON.stringify(quoteDisplay));
     }
   }, [quoteDisplay]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("bevhubSavedQuotes", JSON.stringify(savedQuotes));
+    }
+  }, [savedQuotes]);
 
   function setQuoteOption(key, checked) {
     setQuoteDisplay((current) => ({ ...current, [key]: checked }));
@@ -862,6 +882,133 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
     }
   }
 
+  function nextQuoteNumber() {
+    const highest = savedQuotes.reduce((max, quote) => {
+      const match = String(quote.quoteNumber || "").match(/BH-(\d+)/i);
+      return match ? Math.max(max, Number(match[1])) : max;
+    }, 0);
+    return `BH-${String(highest + 1).padStart(3, "0")}`;
+  }
+
+  function currentQuoteSnapshot(existingQuoteNumber = null, existingStatus = "Draft") {
+    const totalQuoteValue = pricingProgram === "annual"
+      ? result.annualRevenue
+      : pricingProgram === "flex"
+        ? programPricing.productionTotal
+        : programPricing.totalQuote;
+
+    return {
+      quoteNumber: existingQuoteNumber || nextQuoteNumber(),
+      status: existingStatus || "Draft",
+      clientName, annualCases, productionWeeksPerYear, skuCount, casePack, canSize, tolling, casesPerPallet,
+      canEndMode, trayMode, caseLabelMode, palletMode, sleeveMode, cartonMode,
+      canEndCostPerCan, trayCostPerCase, caseLabelCostPerCase, palletMaterialCostPerPallet, sleeveCostPerCan, cartonCostPerCan,
+      weeklyOutput12Pack, weeklyOutput24Pack, lowWeeklyOH, highWeeklyOH, cogsBuffer, customTerms,
+      pricingProgram, campaignCans, minDayRevenueTarget, flexPremiumPerCan, trialFacilityRate, trialExpectedCans, trialDaysReserved,
+      quoteDisplay,
+      summary: {
+        programName: programPricing.programName,
+        package: canSize,
+        volume: programPricing.volumeValue,
+        totalQuote: totalQuoteValue || 0,
+      },
+    };
+  }
+
+  function saveCurrentQuote() {
+    const now = new Date().toISOString();
+    if (activeSavedQuoteId) {
+      setSavedQuotes((current) => current.map((quote) => {
+        if (quote.id !== activeSavedQuoteId) return quote;
+        return {
+          ...currentQuoteSnapshot(quote.quoteNumber, quote.status),
+          id: quote.id,
+          createdAt: quote.createdAt || now,
+          updatedAt: now,
+        };
+      }));
+      setSaveNotice("Saved quote updated.");
+    } else {
+      const newQuote = {
+        ...currentQuoteSnapshot(),
+        id: `quote-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        createdAt: now,
+        updatedAt: now,
+      };
+      setSavedQuotes((current) => [newQuote, ...current]);
+      setActiveSavedQuoteId(newQuote.id);
+      setSaveNotice(`${newQuote.quoteNumber} saved.`);
+    }
+    window.setTimeout(() => setSaveNotice(""), 2500);
+  }
+
+  function loadSavedQuote(quote, duplicate = false) {
+    setClientName(quote.clientName ?? "Client Name");
+    setAnnualCases(quote.annualCases ?? "300000");
+    setProductionWeeksPerYear(quote.productionWeeksPerYear ?? "2");
+    setSkuCount(quote.skuCount ?? "2");
+    setCasePack(quote.casePack ?? "24");
+    setCanSize(quote.canSize ?? "250 ml Slim");
+    setTolling(quote.tolling ?? "0.40045");
+    setCasesPerPallet(quote.casesPerPallet ?? "91");
+    setCanEndMode(quote.canEndMode ?? "clientSupplied");
+    setTrayMode(quote.trayMode ?? "clientSupplied");
+    setCaseLabelMode(quote.caseLabelMode ?? "clientSupplied");
+    setPalletMode(quote.palletMode ?? "clientSupplied");
+    setSleeveMode(quote.sleeveMode ?? "notNeeded");
+    setCartonMode(quote.cartonMode ?? "notNeeded");
+    setCanEndCostPerCan(quote.canEndCostPerCan ?? "0.1681");
+    setTrayCostPerCase(quote.trayCostPerCase ?? "0.2544");
+    setCaseLabelCostPerCase(quote.caseLabelCostPerCase ?? "0.011");
+    setPalletMaterialCostPerPallet(quote.palletMaterialCostPerPallet ?? "13.03");
+    setSleeveCostPerCan(quote.sleeveCostPerCan ?? "0.10");
+    setCartonCostPerCan(quote.cartonCostPerCan ?? "0.0225");
+    setWeeklyOutput12Pack(quote.weeklyOutput12Pack ?? "75000");
+    setWeeklyOutput24Pack(quote.weeklyOutput24Pack ?? "37500");
+    setLowWeeklyOH(quote.lowWeeklyOH ?? "250000");
+    setHighWeeklyOH(quote.highWeeklyOH ?? "350000");
+    setCogsBuffer(quote.cogsBuffer ?? "0");
+    setCustomTerms(quote.customTerms ?? "");
+    setPricingProgram(quote.pricingProgram ?? "annual");
+    setCampaignCans(quote.campaignCans ?? "125000");
+    setMinDayRevenueTarget(quote.minDayRevenueTarget ?? "60000");
+    setFlexPremiumPerCan(quote.flexPremiumPerCan ?? "0.02");
+    setTrialFacilityRate(quote.trialFacilityRate ?? "25000");
+    setTrialExpectedCans(quote.trialExpectedCans ?? "15000");
+    setTrialDaysReserved(quote.trialDaysReserved ?? "1");
+    if (quote.quoteDisplay) setQuoteDisplay({ ...RECOMMENDED_QUOTE_DISPLAY, ...quote.quoteDisplay });
+    setActiveSavedQuoteId(duplicate ? null : quote.id);
+    setSaveNotice(duplicate ? `Loaded a copy of ${quote.quoteNumber}. Save to create a new quote.` : `${quote.quoteNumber} loaded.`);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.setTimeout(() => setSaveNotice(""), 3000);
+  }
+
+  function deleteSavedQuote(id) {
+    const quote = savedQuotes.find((item) => item.id === id);
+    if (!quote) return;
+    if (typeof window !== "undefined" && !window.confirm(`Delete ${quote.quoteNumber} for ${quote.clientName}?`)) return;
+    setSavedQuotes((current) => current.filter((item) => item.id !== id));
+    if (activeSavedQuoteId === id) setActiveSavedQuoteId(null);
+  }
+
+  function updateSavedQuoteStatus(id, status) {
+    setSavedQuotes((current) => current.map((quote) => quote.id === id ? { ...quote, status, updatedAt: new Date().toISOString() } : quote));
+  }
+
+  function startNewQuote() {
+    setActiveSavedQuoteId(null);
+    setSaveNotice("New quote mode. Your current calculator values were left in place.");
+    window.setTimeout(() => setSaveNotice(""), 2500);
+  }
+
+  const filteredSavedQuotes = savedQuotes.filter((quote) => {
+    const search = savedQuoteSearch.trim().toLowerCase();
+    const matchesSearch = !search || [quote.quoteNumber, quote.clientName, quote.summary?.programName, quote.summary?.package]
+      .some((value) => String(value || "").toLowerCase().includes(search));
+    const matchesStatus = savedQuoteStatusFilter === "All" || quote.status === savedQuoteStatusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
   if (!isAuthorized) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-950 p-6 text-slate-900">
@@ -914,21 +1061,124 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
       <div className="mx-auto max-w-7xl space-y-6">
         <header className="flex flex-col gap-4 rounded-2xl border bg-white p-5 shadow-sm md:flex-row md:items-start md:justify-between">
           <div>
-            <h1 className="text-3xl font-semibold">Bev-Hub Quote Calculator MHK v6.5 Quote Display Controls</h1>
-            <p className="text-xs font-semibold text-green-700">Version: MHK v6.5 Quote Display Controls</p>
+            <h1 className="text-3xl font-semibold">Bev-Hub Quote Calculator MHK v6.6 Saved Quote Library</h1>
+            <p className="text-xs font-semibold text-green-700">Version: MHK v6.6 Saved Quote Library</p>
             <p className="mt-2 text-sm text-slate-600">
               Manhattan-only pricing tool. Standard weekly output is 75,000 12-pack cases or 37,500 24-pack cases. Weekly output can be adjusted if operations confirms a different run rate.
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50"
-          >
-            Logout
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={startNewQuote}
+              className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+            >
+              New Quote
+            </button>
+            <button
+              type="button"
+              onClick={saveCurrentQuote}
+              className="rounded-xl bg-green-700 px-4 py-2 text-sm font-semibold text-white hover:bg-green-800"
+            >
+              {activeSavedQuoteId ? "Update Saved Quote" : "Save Quote"}
+            </button>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="rounded-xl border bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-50"
+            >
+              Logout
+            </button>
+          </div>
         </header>
+
+        {saveNotice && (
+          <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-800">
+            {saveNotice}
+          </div>
+        )}
+
+        <section className="rounded-2xl border bg-white p-5 shadow-sm">
+          <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold">Saved Quotes / Quick Reference</h2>
+              <p className="mt-1 text-sm text-slate-500">Quotes are saved in this browser so you can reopen and reference them without downloading a file.</p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input
+                value={savedQuoteSearch}
+                onChange={(event) => setSavedQuoteSearch(event.target.value)}
+                placeholder="Search client or quote #"
+                className="rounded-xl border px-3 py-2 text-sm sm:w-64"
+              />
+              <select
+                value={savedQuoteStatusFilter}
+                onChange={(event) => setSavedQuoteStatusFilter(event.target.value)}
+                className="rounded-xl border px-3 py-2 text-sm"
+              >
+                {['All', 'Draft', 'Sent', 'Approved', 'Declined', 'Expired'].map((status) => <option key={status}>{status}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {filteredSavedQuotes.length === 0 ? (
+            <div className="rounded-xl border border-dashed bg-slate-50 p-6 text-center text-sm text-slate-500">
+              {savedQuotes.length === 0 ? 'No saved quotes yet. Build a quote and click Save Quote.' : 'No saved quotes match your search or filter.'}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b bg-slate-900 text-white">
+                    <th className="px-3 py-3 font-semibold">Quote #</th>
+                    <th className="px-3 py-3 font-semibold">Client / Brand</th>
+                    <th className="px-3 py-3 font-semibold">Program</th>
+                    <th className="px-3 py-3 font-semibold">Package</th>
+                    <th className="px-3 py-3 font-semibold">Volume</th>
+                    <th className="px-3 py-3 font-semibold">Quote Total</th>
+                    <th className="px-3 py-3 font-semibold">Updated</th>
+                    <th className="px-3 py-3 font-semibold">Status</th>
+                    <th className="px-3 py-3 font-semibold">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredSavedQuotes.map((quote) => (
+                    <tr key={quote.id} className={`border-b last:border-0 ${activeSavedQuoteId === quote.id ? 'bg-blue-50' : 'hover:bg-slate-50'}`}>
+                      <td className="whitespace-nowrap px-3 py-3 font-semibold text-blue-700">{quote.quoteNumber}</td>
+                      <td className="px-3 py-3 font-medium">{quote.clientName}</td>
+                      <td className="px-3 py-3">{quote.summary?.programName || '—'}</td>
+                      <td className="px-3 py-3">{quote.summary?.package || quote.canSize}</td>
+                      <td className="whitespace-nowrap px-3 py-3">{quote.summary?.volume || '—'}</td>
+                      <td className="whitespace-nowrap px-3 py-3 font-semibold">{money(quote.summary?.totalQuote || 0, 2)}</td>
+                      <td className="whitespace-nowrap px-3 py-3 text-xs text-slate-500">{new Date(quote.updatedAt || quote.createdAt).toLocaleDateString()}</td>
+                      <td className="px-3 py-3">
+                        <select
+                          value={quote.status || 'Draft'}
+                          onChange={(event) => updateSavedQuoteStatus(quote.id, event.target.value)}
+                          className="rounded-lg border px-2 py-1 text-xs font-semibold"
+                        >
+                          {['Draft', 'Sent', 'Approved', 'Declined', 'Expired'].map((status) => <option key={status}>{status}</option>)}
+                        </select>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-3">
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => loadSavedQuote(quote)} className="rounded-lg border px-2.5 py-1.5 text-xs font-semibold hover:bg-white">Open</button>
+                          <button type="button" onClick={() => loadSavedQuote(quote, true)} className="rounded-lg border px-2.5 py-1.5 text-xs font-semibold hover:bg-white">Duplicate</button>
+                          <button type="button" onClick={() => deleteSavedQuote(quote.id)} className="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50">Delete</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+            <span>{filteredSavedQuotes.length} of {savedQuotes.length} saved quote{savedQuotes.length === 1 ? '' : 's'}</span>
+            <span>Browser storage only. Clearing site data can remove this list.</span>
+          </div>
+        </section>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <section className="rounded-2xl border bg-white p-5 shadow-sm">
