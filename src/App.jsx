@@ -128,7 +128,8 @@ function calculateQuote(input) {
   const weeklyCans = weeklyCases * casePack;
   const cansPerYear = annualCases * casePack;
   const casesPerSkuPerWeek = weeklyCases / skuCount;
-  const lineWeeksNeeded = weeklyCases / maxWeeklyCases;
+  const lineWeeksNeeded = weeklyCases / maxWeeklyCases; // line weeks per production run
+  const totalAnnualLineWeeks = annualCases / maxWeeklyCases;
   const utilization = annualCapacity > 0 ? annualCases / annualCapacity : 0;
 
   const canEndUnit = toNumber(input.canEndCostPerCan, selected.canEnd);
@@ -172,7 +173,13 @@ function calculateQuote(input) {
   const weeklyRevenue = weeklyCans * pricePerCan;
   const weeklyCogsEstimate = weeklyCans * suppliedCogsPerCan * (1 + cogsBuffer);
   const estimatedWeeklyNet = weeklyRevenue - lowWeeklyOH - weeklyCogsEstimate;
+  const estimatedWeeklyContributionHighOH = weeklyRevenue - highWeeklyOH - weeklyCogsEstimate;
   const estimatedWholeRunNet = estimatedWeeklyNet * productionWeeksPerYear;
+  const estimatedAnnualContributionHighOH = estimatedWeeklyContributionHighOH * productionWeeksPerYear;
+  const lowOhBreakEvenPricePerCan = weeklyCans > 0 ? (lowWeeklyOH + weeklyCogsEstimate) / weeklyCans : 0;
+  const highOhBreakEvenPricePerCan = weeklyCans > 0 ? (highWeeklyOH + weeklyCogsEstimate) / weeklyCans : 0;
+  const lowOhPricingCushionPerCan = pricePerCan - lowOhBreakEvenPricePerCan;
+  const highOhPricingCushionPerCan = pricePerCan - highOhBreakEvenPricePerCan;
 
   const ohResultPct = weeklyRevenue / lowWeeklyOH - 1;
   const afterSuppliesPct = estimatedWeeklyNet / lowWeeklyOH;
@@ -211,6 +218,7 @@ function calculateQuote(input) {
     maxWeeklyCases,
     annualCapacity,
     lineWeeksNeeded,
+    totalAnnualLineWeeks,
     utilization,
     tolling,
     tollingWithIncluded,
@@ -226,7 +234,13 @@ function calculateQuote(input) {
     suppliedCogsPerCan,
     weeklyCogsEstimate,
     estimatedWeeklyNet,
+    estimatedWeeklyContributionHighOH,
     estimatedWholeRunNet,
+    estimatedAnnualContributionHighOH,
+    lowOhBreakEvenPricePerCan,
+    highOhBreakEvenPricePerCan,
+    lowOhPricingCushionPerCan,
+    highOhPricingCushionPerCan,
     ohResultPct,
     afterSuppliesPct,
     weeklyOutput12Pack,
@@ -628,7 +642,7 @@ export default function BevHubQuoteCalculator() {
     htmlLine(quoteDisplay.productionPeriod, programPricing.periodLabel, programPricing.periodValue, true),
     htmlLine(quoteDisplay.equivalentCases && pricingProgram !== "annual", "Equivalent Cases", `${calculatedEquivalentCases} cases`, true),
     htmlLine(quoteDisplay.casesPerWeek, "Cases / Production Week", whole(result.weeklyCases), true),
-    htmlLine(quoteDisplay.lineWeeksNeeded, "Line Weeks Needed", result.lineWeeksNeeded.toFixed(2), true),
+    htmlLine(quoteDisplay.lineWeeksNeeded, "Line Weeks / Run", result.lineWeeksNeeded.toFixed(2), true),
   ].join("");
 
   const quotePricingHtml = [
@@ -671,7 +685,7 @@ export default function BevHubQuoteCalculator() {
     quoteDisplay.casesPerWeek ? `Cases Per Production Week: ${whole(result.weeklyCases)}` : "",
     `SKU Count: ${result.skuCount}`,
     `Max Weekly Capacity: ${whole(result.maxWeeklyCases)} cases`,
-    `Line Weeks Needed: ${result.lineWeeksNeeded.toFixed(2)}`,
+    `Line Weeks / Run: ${result.lineWeeksNeeded.toFixed(2)}`,
     pricingProgram === "annual" ? `Annual Capacity Utilization: ${percent(result.utilization)}` : "",
     pricingProgram === "flex" ? `Entered Tolling: ${money(programPricing.baseTolling, 4)} / can` : "",
     pricingProgram === "flex" ? `Flex Premium: ${money(programPricing.flexPremium, 4)} / can` : "",
@@ -700,7 +714,7 @@ export default function BevHubQuoteCalculator() {
     quoteDisplay.quoteTotal && pricingProgram === "trial" ? `Estimated Quote Total: ${money(programPricing.totalQuote, 2)}` : "",
     pricingProgram === "annual" ? `Weekly Revenue: ${money(result.weeklyRevenue, 2)}` : "",
     pricingProgram === "annual" ? `Weekly COGS Estimate: ${money(result.weeklyCogsEstimate, 2)}` : "",
-    pricingProgram === "annual" ? `Estimated Weekly Net: ${money(result.estimatedWeeklyNet, 2)}` : "",
+    pricingProgram === "annual" ? `Weekly Contribution @ Low OH: ${money(result.estimatedWeeklyNet, 2)}` : "",
     pricingProgram === "annual" ? `Estimated Whole Run Net: ${money(result.estimatedWholeRunNet, 2)}` : "",
     pricingProgram === "annual" ? `OH Result: ${percent(result.ohResultPct, 2)}` : "",
     pricingProgram === "annual" ? `After Supplies: ${percent(result.afterSuppliesPct, 2)}` : "",
@@ -710,7 +724,7 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
   ].filter(Boolean).join("\n");
 
 
-  const internalFinancialHtml = `<!doctype html><html><head><title>Internal Financial Summary - ${escapeHtml(clientName)}</title><style>body{font-family:Calibri,Arial,sans-serif;color:#0f172a;padding:32px}.page{max-width:900px;margin:0 auto;border:1px solid #cbd5e1;padding:36px}h1{font-size:30px;margin:0}h2{font-size:18px;border-bottom:1px solid #cbd5e1;padding-bottom:6px;margin-top:28px}.muted{color:#64748b;font-size:13px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:28px}.line{display:flex;justify-content:space-between;gap:24px;padding:4px 0;font-size:14px}.strong{font-weight:700}.alert{background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;padding:14px;margin-top:18px}.notes{border-top:1px solid #cbd5e1;margin-top:28px;padding-top:18px;font-size:12px;line-height:1.55;color:#475569}@media print{body{padding:0}.page{border:none}}</style></head><body><div class="page"><h1>Internal Financial Summary</h1><div class="muted">Manhattan, KS profitability review. Internal use only.</div><div class="grid" style="margin-top:20px;"><div><h2>Quote Setup</h2><div class="line"><span>Client</span><span class="strong">${escapeHtml(clientName)}</span></div><div class="line"><span>Pricing Program</span><span class="strong">${programPricing.programName}</span></div><div class="line"><span>Package</span><span class="strong">${escapeHtml(canSize)}</span></div><div class="line"><span>Case Pack</span><span class="strong">${result.casePack} pack</span></div><div class="line"><span>${programPricing.volumeLabel}</span><span class="strong">${programPricing.volumeValue}</span></div><div class="line"><span>${programPricing.periodLabel}</span><span class="strong">${programPricing.periodValue}</span></div></div><div><h2>Pricing</h2>${pricingProgram === "trial" ? `<div class="line"><span>Daily Facility Fee</span><span class="strong">${money(programPricing.facilityRate, 2)}</span></div>` : ""}${pricingProgram === "flex" ? `<div class="line"><span>Entered Tolling</span><span class="strong">${money(programPricing.baseTolling, 4)} / can</span></div><div class="line"><span>Flex Premium</span><span class="strong">${money(programPricing.flexPremium, 4)} / can</span></div>` : ""}<div class="line"><span>${pricingProgram === "flex" ? "Customer Tolling" : "Tolling"}</span><span class="strong">${money(programPricing.customerTolling, 4)} / can</span></div><div class="line"><span>Total Price / Can</span><span class="strong">${money(programPricing.pricePerCan, 4)}</span></div><div class="line"><span>Total Price / Case</span><span class="strong">${money(programPricing.pricePerCase, 2)}</span></div>${pricingProgram !== "annual" ? `<div class="line"><span>Campaign Product Total</span><span class="strong">${money(programPricing.productionTotal, 2)}</span></div>` : ""}${pricingProgram === "trial" ? `<div class="line"><span>Quote Total</span><span class="strong">${money(programPricing.totalQuote, 2)}</span></div>` : ""}</div></div><h2>Program Review</h2><div class="grid">${pricingProgram === "annual" ? `<div class="line"><span>Operational Grade</span><span class="strong">${result.operationalGrade}</span></div><div class="line"><span>OH Result</span><span class="strong">${percent(result.ohResultPct, 2)}</span></div><div class="line"><span>After Supplies</span><span class="strong">${percent(result.afterSuppliesPct, 2)}</span></div><div class="line"><span>Weekly Revenue</span><span class="strong">${money(result.weeklyRevenue, 2)}</span></div><div class="line"><span>Estimated Weekly Net</span><span class="strong">${money(result.estimatedWeeklyNet, 2)}</span></div><div class="line"><span>Annual Revenue</span><span class="strong">${money(result.annualRevenue, 2)}</span></div>` : ""}${pricingProgram === "flex" ? `<div class="line"><span>Actual Flex Tolling Revenue</span><span class="strong">${money(programPricing.flexRevenue, 2)}</span></div><div class="line"><span>Minimum Day Revenue Target</span><span class="strong">${money(programPricing.minimumRevenue, 2)}</span></div><div class="line"><span>Revenue Shortfall</span><span class="strong">${money(programPricing.capacityRecoveryShortfall, 2)}</span></div><div class="line"><span>Recommended Recovery / Can</span><span class="strong">${money(programPricing.recommendedRecoveryPerCan, 4)}</span></div><div class="line"><span>Recommended Customer Tolling</span><span class="strong">${money(programPricing.recommendedFlexTolling, 4)}</span></div><div class="line"><span>Flex Operational Grade</span><span class="strong">${programPricing.flexOperationalGrade}</span></div>` : ""}${pricingProgram === "trial" ? `<div class="line"><span>Required Revenue</span><span class="strong">${money(programPricing.trialRequiredRevenue, 2)}</span></div><div class="line"><span>Trial Recovery Result</span><span class="strong">${percent(programPricing.trialRecoveryPct, 2)}</span></div><div class="line"><span>Trial Operational Grade</span><span class="strong">${programPricing.trialOperationalGrade}</span></div>` : ""}</div><h2>Cost and Capacity Detail</h2><div class="grid"><div class="line"><span>Materials / Can</span><span class="strong">${money(result.materialsPerCan, 4)}</span></div><div class="line"><span>Services / Can</span><span class="strong">${money(result.servicesPerCan, 4)}</span></div><div class="line"><span>Supplied COGS / Can</span><span class="strong">${money(result.suppliedCogsPerCan, 4)}</span></div><div class="line"><span>Weekly Capacity Assumption</span><span class="strong">${whole(result.maxWeeklyCases)} cases</span></div><div class="line"><span>Line Weeks Needed</span><span class="strong">${result.lineWeeksNeeded.toFixed(2)}</span></div></div><div class="alert"><div class="strong">${pricingProgram === "annual" ? `Review Status: ${result.status}` : programPricing.note}</div>${pricingProgram === "annual" ? `<div>${escapeHtml(result.statusNote)}</div>` : ""}</div><div class="notes"><p>This financial summary is for internal Bev-Hub review only and should not be shared externally.</p></div></div></body></html>`;
+  const internalFinancialHtml = `<!doctype html><html><head><title>Internal Financial Summary - ${escapeHtml(clientName)}</title><style>body{font-family:Calibri,Arial,sans-serif;color:#0f172a;padding:32px}.page{max-width:900px;margin:0 auto;border:1px solid #cbd5e1;padding:36px}h1{font-size:30px;margin:0}h2{font-size:18px;border-bottom:1px solid #cbd5e1;padding-bottom:6px;margin-top:28px}.muted{color:#64748b;font-size:13px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:28px}.line{display:flex;justify-content:space-between;gap:24px;padding:4px 0;font-size:14px}.strong{font-weight:700}.alert{background:#f8fafc;border:1px solid #cbd5e1;border-radius:10px;padding:14px;margin-top:18px}.notes{border-top:1px solid #cbd5e1;margin-top:28px;padding-top:18px;font-size:12px;line-height:1.55;color:#475569}@media print{body{padding:0}.page{border:none}}</style></head><body><div class="page"><h1>Internal Financial Summary</h1><div class="muted">Manhattan, KS profitability review. Internal use only.</div><div class="grid" style="margin-top:20px;"><div><h2>Quote Setup</h2><div class="line"><span>Client</span><span class="strong">${escapeHtml(clientName)}</span></div><div class="line"><span>Pricing Program</span><span class="strong">${programPricing.programName}</span></div><div class="line"><span>Package</span><span class="strong">${escapeHtml(canSize)}</span></div><div class="line"><span>Case Pack</span><span class="strong">${result.casePack} pack</span></div><div class="line"><span>${programPricing.volumeLabel}</span><span class="strong">${programPricing.volumeValue}</span></div><div class="line"><span>${programPricing.periodLabel}</span><span class="strong">${programPricing.periodValue}</span></div></div><div><h2>Pricing</h2>${pricingProgram === "trial" ? `<div class="line"><span>Daily Facility Fee</span><span class="strong">${money(programPricing.facilityRate, 2)}</span></div>` : ""}${pricingProgram === "flex" ? `<div class="line"><span>Entered Tolling</span><span class="strong">${money(programPricing.baseTolling, 4)} / can</span></div><div class="line"><span>Flex Premium</span><span class="strong">${money(programPricing.flexPremium, 4)} / can</span></div>` : ""}<div class="line"><span>${pricingProgram === "flex" ? "Customer Tolling" : "Tolling"}</span><span class="strong">${money(programPricing.customerTolling, 4)} / can</span></div><div class="line"><span>Total Price / Can</span><span class="strong">${money(programPricing.pricePerCan, 4)}</span></div><div class="line"><span>Total Price / Case</span><span class="strong">${money(programPricing.pricePerCase, 2)}</span></div>${pricingProgram !== "annual" ? `<div class="line"><span>Campaign Product Total</span><span class="strong">${money(programPricing.productionTotal, 2)}</span></div>` : ""}${pricingProgram === "trial" ? `<div class="line"><span>Quote Total</span><span class="strong">${money(programPricing.totalQuote, 2)}</span></div>` : ""}</div></div><h2>Program Review</h2><div class="grid">${pricingProgram === "annual" ? `<div class="line"><span>Operational Grade</span><span class="strong">${result.operationalGrade}</span></div><div class="line"><span>OH Coverage Above Low Target</span><span class="strong">${percent(result.ohResultPct, 2)}</span></div><div class="line"><span>Contribution Above Low OH</span><span class="strong">${percent(result.afterSuppliesPct, 2)}</span></div><div class="line"><span>Weekly Revenue</span><span class="strong">${money(result.weeklyRevenue, 2)}</span></div><div class="line"><span>Weekly Supplied COGS</span><span class="strong">${money(result.weeklyCogsEstimate, 2)}</span></div><div class="line"><span>Weekly Contribution @ Low OH</span><span class="strong">${money(result.estimatedWeeklyNet, 2)}</span></div><div class="line"><span>Weekly Contribution @ High OH</span><span class="strong">${money(result.estimatedWeeklyContributionHighOH, 2)}</span></div><div class="line"><span>Annual Revenue</span><span class="strong">${money(result.annualRevenue, 2)}</span></div><div class="line"><span>Annual Contribution @ Low OH</span><span class="strong">${money(result.estimatedWholeRunNet, 2)}</span></div><div class="line"><span>Annual Contribution @ High OH</span><span class="strong">${money(result.estimatedAnnualContributionHighOH, 2)}</span></div><div class="line"><span>Break-Even Price @ Low OH</span><span class="strong">${money(result.lowOhBreakEvenPricePerCan, 4)} / can</span></div><div class="line"><span>Break-Even Price @ High OH</span><span class="strong">${money(result.highOhBreakEvenPricePerCan, 4)} / can</span></div><div class="line"><span>Pricing Cushion @ Low OH</span><span class="strong">${money(result.lowOhPricingCushionPerCan, 4)} / can</span></div><div class="line"><span>Pricing Cushion @ High OH</span><span class="strong">${money(result.highOhPricingCushionPerCan, 4)} / can</span></div><div class="line"><span>Recommended Tolling For Good</span><span class="strong">${money(result.recommendedTolling, 4)} / can</span></div><div class="line"><span>Recommended Increase</span><span class="strong">${percent(result.recommendedIncreasePct)}</span></div>` : ""}${pricingProgram === "flex" ? `<div class="line"><span>Actual Flex Tolling Revenue</span><span class="strong">${money(programPricing.flexRevenue, 2)}</span></div><div class="line"><span>Minimum Day Revenue Target</span><span class="strong">${money(programPricing.minimumRevenue, 2)}</span></div><div class="line"><span>Revenue Shortfall</span><span class="strong">${money(programPricing.capacityRecoveryShortfall, 2)}</span></div><div class="line"><span>Recommended Recovery / Can</span><span class="strong">${money(programPricing.recommendedRecoveryPerCan, 4)}</span></div><div class="line"><span>Recommended Customer Tolling</span><span class="strong">${money(programPricing.recommendedFlexTolling, 4)}</span></div><div class="line"><span>Flex Operational Grade</span><span class="strong">${programPricing.flexOperationalGrade}</span></div>` : ""}${pricingProgram === "trial" ? `<div class="line"><span>Required Revenue</span><span class="strong">${money(programPricing.trialRequiredRevenue, 2)}</span></div><div class="line"><span>Trial Recovery Result</span><span class="strong">${percent(programPricing.trialRecoveryPct, 2)}</span></div><div class="line"><span>Trial Operational Grade</span><span class="strong">${programPricing.trialOperationalGrade}</span></div>` : ""}</div><h2>Cost and Capacity Detail</h2><div class="grid"><div class="line"><span>Entered Tolling / Can</span><span class="strong">${money(result.tolling, 4)}</span></div><div class="line"><span>Included Bev-Hub Cost / Can</span><span class="strong">${money(result.includedInToll, 4)}</span></div><div class="line"><span>Materials / Can</span><span class="strong">${money(result.materialsPerCan, 4)}</span></div><div class="line"><span>Services / Can</span><span class="strong">${money(result.servicesPerCan, 4)}</span></div><div class="line"><span>Supplied COGS / Can</span><span class="strong">${money(result.suppliedCogsPerCan, 4)}</span></div><div class="line"><span>COGS Buffer</span><span class="strong">${percent(result.cogsBuffer, 1)}</span></div><div class="line"><span>Low Weekly OH</span><span class="strong">${money(result.lowWeeklyOH, 2)}</span></div><div class="line"><span>High Weekly OH</span><span class="strong">${money(result.highWeeklyOH, 2)}</span></div><div class="line"><span>Cases / Production Week</span><span class="strong">${whole(result.weeklyCases)}</span></div><div class="line"><span>Cans / Production Week</span><span class="strong">${whole(result.weeklyCans)}</span></div><div class="line"><span>Average Cases / SKU / Week</span><span class="strong">${whole(result.casesPerSkuPerWeek)}</span></div><div class="line"><span>Weekly Capacity Assumption</span><span class="strong">${whole(result.maxWeeklyCases)} cases</span></div><div class="line"><span>Line Weeks / Run</span><span class="strong">${result.lineWeeksNeeded.toFixed(2)}</span></div><div class="line"><span>Total Annual Line Weeks</span><span class="strong">${result.totalAnnualLineWeeks.toFixed(2)}</span></div><div class="line"><span>Annual Line Capacity Utilization</span><span class="strong">${percent(result.utilization, 1)}</span></div></div><div class="alert"><div class="strong">${pricingProgram === "annual" ? `Review Status: ${result.status}` : programPricing.note}</div>${pricingProgram === "annual" ? `<div>${escapeHtml(result.statusNote)}</div>` : ""}</div><div class="notes"><p>This financial summary is for internal Bev-Hub review only and should not be shared externally. Contribution metrics are internal planning measures based on the OH and supplied COGS assumptions shown above; they are not accounting net income.</p></div></div></body></html>`;
 
   const csvText = csvRowsToText([
     ["Field", "Value"],
@@ -723,7 +737,7 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
     ["Cases Per Production Week", result.weeklyCases],
     ["SKU Count", result.skuCount],
     ["Max Weekly Capacity", result.maxWeeklyCases],
-    ["Line Weeks Needed", result.lineWeeksNeeded],
+    ["Line Weeks / Run", result.lineWeeksNeeded],
     ["Utilization", percent(result.utilization)],
     ["Daily Facility Fee", pricingProgram === "trial" ? programPricing.facilityRate : ""],
     ["Actual Flex Tolling Revenue", pricingProgram === "flex" ? programPricing.flexRevenue : ""],
@@ -752,10 +766,10 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
     ["Estimated Price Per Case", programPricing.pricePerCase],
     ["Weekly Revenue", result.weeklyRevenue],
     ["Weekly COGS Estimate", result.weeklyCogsEstimate],
-    ["Estimated Weekly Net", result.estimatedWeeklyNet],
+    ["Weekly Contribution @ Low OH", result.estimatedWeeklyNet],
     ["Estimated Whole Run Net", result.estimatedWholeRunNet],
-    ["OH Result", percent(result.ohResultPct, 2)],
-    ["After Supplies", percent(result.afterSuppliesPct, 2)],
+    ["OH Coverage Above Low Target", percent(result.ohResultPct, 2)],
+    ["Contribution Above Low OH", percent(result.afterSuppliesPct, 2)],
     ["Operational Grade", result.operationalGrade],
     ["Cans + Ends", modeLabel(canEndMode)],
     ["Trays", modeLabel(trayMode)],
@@ -792,7 +806,7 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
     pricingProgram === "trial" ? `Trial Operational Grade: ${programPricing.trialOperationalGrade}` : "",
     pricingProgram === "trial" ? `Trial Recovery Result: ${percent(programPricing.trialRecoveryPct, 2)}` : "",
     pricingProgram === "annual" ? `Weekly Revenue: ${money(result.weeklyRevenue, 2)}` : "",
-    pricingProgram === "annual" ? `Estimated Weekly Net: ${money(result.estimatedWeeklyNet, 2)}` : "",
+    pricingProgram === "annual" ? `Weekly Contribution @ Low OH: ${money(result.estimatedWeeklyNet, 2)}` : "",
     pricingProgram === "annual" ? `Estimated Whole Run Net: ${money(result.estimatedWholeRunNet, 2)}` : "",
     quoteDisplay.customTerms && customTermLines.length ? `Custom Terms:\n${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
   ].filter(Boolean).join("\n");
@@ -1061,7 +1075,7 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
       <div className="mx-auto max-w-7xl space-y-6">
         <header className="flex flex-col gap-4 rounded-2xl border bg-white p-5 shadow-sm md:flex-row md:items-start md:justify-between">
           <div>
-            <h1 className="text-3xl font-semibold">Bev-Hub Quote Calculator MHK v6.6 Saved Quote Library</h1>
+            <h1 className="text-3xl font-semibold">Bev-Hub Quote Calculator MHK v6.7 Financial Intelligence</h1>
             <p className="text-xs font-semibold text-green-700">Version: MHK v6.6 Saved Quote Library</p>
             <p className="mt-2 text-sm text-slate-600">
               Manhattan-only pricing tool. Standard weekly output is 75,000 12-pack cases or 37,500 24-pack cases. Weekly output can be adjusted if operations confirms a different run rate.
@@ -1296,7 +1310,7 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
                   <QuoteToggle label="Production Period" checked={quoteDisplay.productionPeriod} onChange={(v) => setQuoteOption("productionPeriod", v)} />
                   <QuoteToggle label="Equivalent Cases" checked={quoteDisplay.equivalentCases} onChange={(v) => setQuoteOption("equivalentCases", v)} disabled={pricingProgram === "annual"} />
                   <QuoteToggle label="Cases / Production Week" checked={quoteDisplay.casesPerWeek} onChange={(v) => setQuoteOption("casesPerWeek", v)} />
-                  <QuoteToggle label="Line Weeks Needed" checked={quoteDisplay.lineWeeksNeeded} onChange={(v) => setQuoteOption("lineWeeksNeeded", v)} />
+                  <QuoteToggle label="Line Weeks / Run" checked={quoteDisplay.lineWeeksNeeded} onChange={(v) => setQuoteOption("lineWeeksNeeded", v)} />
                   <QuoteToggle label="Daily Facility Fee" checked={quoteDisplay.facilityFee} onChange={(v) => setQuoteOption("facilityFee", v)} disabled={pricingProgram !== "trial"} />
                   <QuoteToggle label="Tolling" checked={quoteDisplay.tolling} onChange={(v) => setQuoteOption("tolling", v)} />
                   <QuoteToggle label="Materials Pricing" checked={quoteDisplay.materials} onChange={(v) => setQuoteOption("materials", v)} />
@@ -1330,9 +1344,9 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
           <main className="space-y-6 lg:col-span-2">
             <section className="grid grid-cols-1 gap-4 md:grid-cols-5">
               <Kpi title="Cases / Production Week" value={whole(result.weeklyCases)} />
-              <Kpi title="Line Weeks Needed" value={result.lineWeeksNeeded.toFixed(2)} />
+              <Kpi title="Line Weeks / Run" value={result.lineWeeksNeeded.toFixed(2)} />
               <Kpi title="Max Weekly" value={`${whole(result.maxWeeklyCases)} cases`} />
-              <Kpi title={pricingProgram === "annual" ? "Utilization" : "Campaign Cases"} value={pricingProgram === "annual" ? percent(result.utilization) : whole(calculatedEquivalentCases)} />
+              <Kpi title={pricingProgram === "annual" ? "Annual Line Weeks" : "Campaign Cases"} value={pricingProgram === "annual" ? result.totalAnnualLineWeeks.toFixed(2) : whole(calculatedEquivalentCases)} />
               <Kpi
                 title={pricingProgram === "annual" ? "Annual Revenue" : pricingProgram === "flex" ? "Campaign Revenue" : "Quote Total"}
                 value={pricingProgram === "annual" ? money(result.annualRevenue, 2) : pricingProgram === "flex" ? money(programPricing.productionTotal, 2) : money(programPricing.totalQuote, 2)}
@@ -1375,12 +1389,20 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
                 {pricingProgram === "annual" && <Output label="Recommended Tolling For Good" value={`${money(result.recommendedTolling, 4)} / can`} />}
                 {pricingProgram === "annual" && <Output label="Recommended Increase" value={percent(result.recommendedIncreasePct)} />}
                 {pricingProgram === "annual" && <Output label="Operational Grade" value={result.operationalGrade} />}
-                {pricingProgram === "annual" && <Output label="OH Result" value={percent(result.ohResultPct, 2)} />}
-                {pricingProgram === "annual" && <Output label="After Supplies" value={percent(result.afterSuppliesPct, 2)} />}
+                {pricingProgram === "annual" && <Output label="OH Coverage Above Low Target" value={percent(result.ohResultPct, 2)} />}
+                {pricingProgram === "annual" && <Output label="Contribution Above Low OH" value={percent(result.afterSuppliesPct, 2)} />}
                 {pricingProgram === "annual" && <Output label="Weekly Revenue" value={money(result.weeklyRevenue, 2)} />}
                 {pricingProgram === "annual" && <Output label="Weekly COGS Estimate" value={money(result.weeklyCogsEstimate, 2)} />}
-                {pricingProgram === "annual" && <Output label="Est. Week Net Inc." value={money(result.estimatedWeeklyNet, 2)} />}
-                {pricingProgram === "annual" && <Output label="Estimated Whole Run Net" value={money(result.estimatedWholeRunNet, 2)} />}
+                {pricingProgram === "annual" && <Output label="Weekly Contribution @ Low OH" value={money(result.estimatedWeeklyNet, 2)} />}
+                {pricingProgram === "annual" && <Output label="Weekly Contribution @ High OH" value={money(result.estimatedWeeklyContributionHighOH, 2)} />}
+                {pricingProgram === "annual" && <Output label="Annual Contribution @ Low OH" value={money(result.estimatedWholeRunNet, 2)} />}
+                {pricingProgram === "annual" && <Output label="Annual Contribution @ High OH" value={money(result.estimatedAnnualContributionHighOH, 2)} />}
+                {pricingProgram === "annual" && <Output label="Break-Even Price @ Low OH" value={`${money(result.lowOhBreakEvenPricePerCan, 4)} / can`} />}
+                {pricingProgram === "annual" && <Output label="Break-Even Price @ High OH" value={`${money(result.highOhBreakEvenPricePerCan, 4)} / can`} />}
+                {pricingProgram === "annual" && <Output label="Pricing Cushion @ Low OH" value={`${money(result.lowOhPricingCushionPerCan, 4)} / can`} />}
+                {pricingProgram === "annual" && <Output label="Pricing Cushion @ High OH" value={`${money(result.highOhPricingCushionPerCan, 4)} / can`} />}
+                {pricingProgram === "annual" && <Output label="Annual Line Capacity Utilization" value={percent(result.utilization, 1)} />}
+                {pricingProgram === "annual" && <Output label="Average Cases / SKU / Week" value={whole(result.casesPerSkuPerWeek)} />}
                 <Output label="Weekly Output Assumption" value={`${whole(result.maxWeeklyCases)} cases`} />
               </div>
             </Panel>
@@ -1473,7 +1495,7 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
                   {quoteDisplay.productionPeriod && <QuoteLine label={programPricing.periodLabel} value={programPricing.periodValue} />}
                   {quoteDisplay.equivalentCases && pricingProgram !== "annual" && <QuoteLine label="Equivalent Cases" value={`${calculatedEquivalentCases} cases`} />}
                   {quoteDisplay.casesPerWeek && <QuoteLine label="Cases / Production Week" value={whole(result.weeklyCases)} />}
-                  {quoteDisplay.lineWeeksNeeded && <QuoteLine label="Line Weeks Needed" value={result.lineWeeksNeeded.toFixed(2)} />}
+                  {quoteDisplay.lineWeeksNeeded && <QuoteLine label="Line Weeks / Run" value={result.lineWeeksNeeded.toFixed(2)} />}
                 </div>
               )}
               {(quoteDisplay.facilityFee || quoteDisplay.tolling || quoteDisplay.materials || quoteDisplay.services || quoteDisplay.pricePerCan || quoteDisplay.pricePerCase || quoteDisplay.productTotal || quoteDisplay.quoteTotal) && (
