@@ -943,6 +943,13 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
 
   function saveCurrentQuote() {
     const now = new Date().toISOString();
+    // Handoff for the Contract Exhibits tab. Keep pricing calculations unchanged.
+    try {
+      window.localStorage.setItem("bevhub-last-saved-quote-for-contract", JSON.stringify({
+        ...currentQuoteSnapshot(), id: activeSavedQuoteId || `pending-${Date.now()}`,
+        savedAt: now,
+      }));
+    } catch (error) { console.warn("Quote-to-contract handoff storage unavailable", error); }
     if (activeSavedQuoteId) {
       setSavedQuotes((current) => current.map((quote) => {
         if (quote.id !== activeSavedQuoteId) return quote;
@@ -1717,7 +1724,7 @@ export default function App() {
         <button onClick={()=>setWorkArea("contracts")} aria-pressed={workArea==="contracts"} style={{padding:"8px 12px",borderRadius:5,fontWeight:600,background:workArea==="contracts"?"#dceafd":"#fff"}}>Contract Exhibits A–D</button>
       </nav>
       <div style={{display:workArea==="pricing"?"block":"none"}}><BevHubPricingApp /></div>
-      {workArea==="contracts" && <iframe title="Bev-Hub Contract Exhibit Generator" src="/contracts/index.html" style={{display:"block",height:"calc(100vh - 66px)",width:"100%",border:"none"}} />}
+      {workArea==="contracts" && <iframe title="Bev-Hub Contract Exhibit Generator" src="/contracts/index.html" onLoad={(event)=>event.currentTarget.contentWindow?.postMessage({type:"BEVHUB_IMPORT_IF_BLANK"},window.location.origin)} style={{display:"block",height:"calc(100vh - 66px)",width:"100%",border:"none"}} />}
     </div>
   );
 }
