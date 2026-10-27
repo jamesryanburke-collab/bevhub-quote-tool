@@ -849,23 +849,35 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
         backgroundColor: "#ffffff",
       });
 
-      const imgData = canvas.toDataURL("image/png");
       const pdf = new jsPDF("p", "mm", "a4");
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
-      const imgHeight = (canvas.height * pdfWidth) / canvas.width;
-
-      let heightLeft = imgHeight;
-      let position = 0;
-
-      pdf.addImage(imgData, "PNG", 0, position, pdfWidth, imgHeight);
-      heightLeft -= pdfHeight;
-
-      while (heightLeft > 0) {
-        position -= pdfHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, "PNG", 0, position, pdfWidth, imgHeight);
-        heightLeft -= pdfHeight;
+      const pagePixels = Math.floor(canvas.width * pdfHeight / pdfWidth);
+      const targetRect = target.getBoundingClientRect();
+      const scale = canvas.width / targetRect.width;
+      // Preserve the existing rendering, but cut between rows/paragraphs and
+      // keep each signature section together when it fits on a page.
+      const blocks = Array.from(target.querySelectorAll(".signature, .line, p, h1, h2"))
+        .filter((element) => !element.parentElement.closest(".signature"))
+        .map((element) => {
+          const rect = element.getBoundingClientRect();
+          return { top: Math.floor((rect.top - targetRect.top) * scale), bottom: Math.ceil((rect.bottom - targetRect.top) * scale) };
+        });
+      let start = 0;
+      while (start < canvas.height) {
+        let end = Math.min(start + pagePixels, canvas.height);
+        // A row in either column may cross the other column's proposed break.
+        let crossing;
+        while ((crossing = blocks.find((block) => block.top > start && block.top < end && block.bottom > end))) {
+          end = crossing.top;
+        }
+        const slice = document.createElement("canvas");
+        slice.width = canvas.width;
+        slice.height = end - start;
+        slice.getContext("2d").drawImage(canvas, 0, start, canvas.width, slice.height, 0, 0, canvas.width, slice.height);
+        if (start > 0) pdf.addPage();
+        pdf.addImage(slice.toDataURL("image/png"), "PNG", 0, 0, pdfWidth, slice.height * pdfWidth / canvas.width);
+        start = end;
       }
 
       pdf.save(filename);
@@ -1713,8 +1725,8 @@ export default function App() {
     <div>
       <nav style={{display:"flex",gap:12,alignItems:"center",padding:"12px 24px",background:"#1b2941",color:"white",fontFamily:"Arial,sans-serif"}}>
         <strong style={{marginRight:16}}>BEV-HUB</strong>
-        <button onClick={()=>setWorkArea("pricing")} aria-pressed={workArea==="pricing"} style={{padding:"8px 12px",borderRadius:5,fontWeight:600,background:workArea==="pricing"?"#dceafd":"#fff"}}>Tolling Calculator</button>
-        <button onClick={()=>setWorkArea("contracts")} aria-pressed={workArea==="contracts"} style={{padding:"8px 12px",borderRadius:5,fontWeight:600,background:workArea==="contracts"?"#dceafd":"#fff"}}>Contract Exhibits A–D</button>
+        <button onClick={()=>setWorkArea("pricing")} aria-pressed={workArea==="pricing"} style={{padding:"8px 12px",borderRadius:5,fontWeight:600,color:"#1b2941",background:workArea==="pricing"?"#dceafd":"#fff"}}>Tolling Calculator</button>
+        <button onClick={()=>setWorkArea("contracts")} aria-pressed={workArea==="contracts"} style={{padding:"8px 12px",borderRadius:5,fontWeight:600,color:"#1b2941",background:workArea==="contracts"?"#dceafd":"#fff"}}>Contract Exhibits A–D</button>
       </nav>
       <div style={{display:workArea==="pricing"?"block":"none"}}><BevHubPricingApp /></div>
       {workArea==="contracts" && <iframe title="Bev-Hub Contract Exhibit Generator" src="/contracts/index.html" style={{display:"block",height:"calc(100vh - 66px)",width:"100%",border:"none"}} />}

@@ -52,12 +52,23 @@ function importPricingQuote(silent=false){
   }
   const populated=Boolean(data.profile.customer||data.profile.legalName||data.profile.annualCases);
   if(populated&&data.linkedQuoteKey!==sourceKey){
-    if(silent||!confirm('Import '+q.clientName+' into the current contract? Customer name, can size, case pack and annual volume will be updated. Contract dates, materials and legal terms stay unchanged.'))return false;
+    if(silent||!confirm('Import '+q.clientName+' into the current contract? Customer name, can size and case pack will be updated. Annual quotes also update annual volume. Contract dates, materials and legal terms stay unchanged.'))return false;
+  }
+  // Older annual quotes did not store a pricingProgram field.
+  const isAnnual=!q.pricingProgram||q.pricingProgram==='annual';
+  let annualCases=isAnnual?String(q.annualCases??''):String(data.profile.annualCases??'');
+  if(!isAnnual&&annualCases.trim()){
+    if(silent)return false;
+    const answer=prompt('This quote has no annual volume commitment. The current contract has '+annualCases+' annual cases. Enter CLEAR to remove that commitment or RETAIN to keep it. Cancel leaves the contract unchanged.','CLEAR');
+    if(answer===null)return false;
+    const choice=answer.trim().toUpperCase();
+    if(choice!=='CLEAR'&&choice!=='RETAIN'){alert('Enter CLEAR or RETAIN. The contract was not changed.');return false}
+    if(choice==='CLEAR')annualCases='';
   }
   data.profile.customer=String(q.clientName||'');
   data.profile.package=String(q.canSize||'');
   data.profile.casePack=String(q.casePack||'');
-  if(q.pricingProgram==='annual')data.profile.annualCases=String(q.annualCases||'');
+  data.profile.annualCases=annualCases;
   data.linkedQuoteKey=sourceKey;
   data.linkedQuoteNumber=String(q.quoteNumber||'');
   saveNow();tab='profile';render();setStatus('Imported '+q.clientName+' from calculator');return true;
