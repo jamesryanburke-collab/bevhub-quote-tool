@@ -301,7 +301,7 @@ function runTests() {
   ];
 }
 
-export default function BevHubQuoteCalculator() {
+function BevHubPricingApp() {
   const ACCESS_PASSWORD = "ChangeThisPassword123!";
   const ACCESS_MAX_AGE_MS = 8 * 60 * 60 * 1000;
 
@@ -645,10 +645,22 @@ export default function BevHubQuoteCalculator() {
     htmlLine(quoteDisplay.lineWeeksNeeded, "Line Weeks / Run", result.lineWeeksNeeded.toFixed(2), true),
   ].join("");
 
+  // Additional-cost materials only; included items are already inside tolling.
+  // No changes are made to calculateQuote or to price-per-can mathematics.
+  const materialQuoteLines = [
+    [canEndMode, "Cans and Ends", result.canEndCost],
+    [trayMode, "Trays", result.trayCost],
+    [caseLabelMode, "Case Labels", result.caseLabelCost],
+    [palletMode, "Pallet Materials", result.palletCost],
+  ].filter(([mode, , cost]) => mode === "additional" && cost > 0);
+
   const quotePricingHtml = [
     htmlLine(quoteDisplay.facilityFee && pricingProgram === "trial", "Daily Facility Fee", money(programPricing.facilityRate, 2), true),
     htmlLine(quoteDisplay.tolling, pricingProgram === "flex" ? "Customer Tolling" : "Tolling", `${money(programPricing.customerTolling, 4)} / can`, true),
-    htmlLine(quoteDisplay.materials, "Materials and Packaging", `${money(result.materialsPerCan, 4)} / can`, true),
+    ...(quoteDisplay.materials ? [
+      ...materialQuoteLines.map(([, label, cost]) => htmlLine(true, label, `${money(cost, 4)} / can`, true)),
+      htmlLine(true, "Materials Subtotal", `${money(result.materialsPerCan, 4)} / can`, true),
+    ] : []),
     htmlLine(quoteDisplay.services, "Additional Services", `${money(result.servicesPerCan, 4)} / can`, true),
     htmlLine(quoteDisplay.pricePerCan, "Estimated Total", `${money(programPricing.pricePerCan, 4)} / can`, true),
     htmlLine(quoteDisplay.pricePerCase, "Estimated Total", `${money(programPricing.pricePerCase, 2)} / case`, true),
@@ -1503,7 +1515,14 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
                   <h4 className="mb-3 border-b pb-2 text-lg font-semibold">Pricing Estimate</h4>
                   {quoteDisplay.facilityFee && pricingProgram === "trial" && <QuoteLine label="Daily Facility Fee" value={money(programPricing.facilityRate, 2)} />}
                   {quoteDisplay.tolling && <QuoteLine label={pricingProgram === "flex" ? "Customer Tolling" : "Tolling"} value={`${money(programPricing.customerTolling, 4)} / can`} />}
-                  {quoteDisplay.materials && <QuoteLine label="Materials and Packaging" value={`${money(result.materialsPerCan, 4)} / can`} />}
+                  {quoteDisplay.materials && (
+                    <>
+                      {materialQuoteLines.map(([, label, cost]) => (
+                        <QuoteLine key={label} label={label} value={`${money(cost, 4)} / can`} />
+                      ))}
+                      <QuoteLine label="Materials Subtotal" value={`${money(result.materialsPerCan, 4)} / can`} strong />
+                    </>
+                  )}
                   {quoteDisplay.services && <QuoteLine label="Additional Services" value={`${money(result.servicesPerCan, 4)} / can`} />}
                   {quoteDisplay.pricePerCan && <QuoteLine label="Estimated Total" value={`${money(programPricing.pricePerCan, 4)} / can`} strong />}
                   {quoteDisplay.pricePerCase && <QuoteLine label="Estimated Total" value={`${money(programPricing.pricePerCase, 2)} / case`} strong />}
@@ -1682,6 +1701,23 @@ function Signature({ title, showPo = false }) {
           <div className="border-b border-slate-500 pb-1"></div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Bev-Hub Contract Exhibits - staged integration
+// Contract files are hosted at /contracts/ and share the existing origin.
+export default function App() {
+  const [workArea, setWorkArea] = React.useState("pricing");
+  return (
+    <div>
+      <nav style={{display:"flex",gap:12,alignItems:"center",padding:"12px 24px",background:"#1b2941",color:"white",fontFamily:"Arial,sans-serif"}}>
+        <strong style={{marginRight:16}}>BEV-HUB</strong>
+        <button onClick={()=>setWorkArea("pricing")} aria-pressed={workArea==="pricing"} style={{padding:"8px 12px",borderRadius:5,fontWeight:600,background:workArea==="pricing"?"#dceafd":"#fff"}}>Tolling Calculator</button>
+        <button onClick={()=>setWorkArea("contracts")} aria-pressed={workArea==="contracts"} style={{padding:"8px 12px",borderRadius:5,fontWeight:600,background:workArea==="contracts"?"#dceafd":"#fff"}}>Contract Exhibits A–D</button>
+      </nav>
+      <div style={{display:workArea==="pricing"?"block":"none"}}><BevHubPricingApp /></div>
+      {workArea==="contracts" && <iframe title="Bev-Hub Contract Exhibit Generator" src="/contracts/index.html" style={{display:"block",height:"calc(100vh - 66px)",width:"100%",border:"none"}} />}
     </div>
   );
 }
