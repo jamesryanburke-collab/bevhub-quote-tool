@@ -8,7 +8,7 @@ let count=0;
 for(const program of ['annual',undefined,'flex','trial'])for(const action of ['CLEAR','RETAIN',null,'invalid']){
  const quote={id:'new',clientName:'New Customer',canSize:'16 oz',casePack:'12',annualCases:'12345',pricingProgram:program};
  const data={profile:{customer:'Old Customer',annualCases:'250000',legalName:'Old LLC',facility:'MHK'},linkedQuoteKey:'old'};
- const ctx=vm.createContext({data,library:{},activeId:'c1',quoteCandidates:()=>[quote],confirm:()=>true,prompt:()=>action,alert:()=>{},saveNow:()=>{},render:()=>{},setStatus:()=>{},tab:'profile'});
+ const ctx=vm.createContext({data,library:{},activeId:'c1',quoteCandidates:()=>[quote],confirm:()=>true,prompt:()=>action,alert:()=>{},saveNow:()=>Promise.resolve(),render:()=>{},setStatus:()=>{},tab:'profile'});
  vm.runInContext(fn+';globalThis.result=importPricingQuote()',ctx);
  const annual=program==='annual'||program===undefined;
  if(!annual&&(action===null||action==='invalid')){assert.equal(ctx.result,false);assert.equal(data.profile.customer,'Old Customer');assert.equal(data.profile.annualCases,'250000');}
@@ -17,7 +17,7 @@ for(const program of ['annual',undefined,'flex','trial'])for(const action of ['C
 }
 for(const program of ['flex','trial']){
  const data={profile:{customer:'',annualCases:''}};
- const ctx=vm.createContext({data,library:{},activeId:'c1',quoteCandidates:()=>[{id:'q',clientName:'Blank import',pricingProgram:program}],prompt:()=>{throw Error('Unexpected prompt')},confirm:()=>{throw Error('Unexpected confirm')},saveNow:()=>{},render:()=>{},setStatus:()=>{}});
+ const ctx=vm.createContext({data,library:{},activeId:'c1',quoteCandidates:()=>[{id:'q',clientName:'Blank import',pricingProgram:program}],prompt:()=>{throw Error('Unexpected prompt')},confirm:()=>{throw Error('Unexpected confirm')},saveNow:()=>Promise.resolve(),render:()=>{},setStatus:()=>{}});
  vm.runInContext(fn+';globalThis.result=importPricingQuote(true)',ctx);assert.equal(ctx.result,true);assert.equal(data.profile.annualCases,'');count++;
 }
 assert.equal(count,18);

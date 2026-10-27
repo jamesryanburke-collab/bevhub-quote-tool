@@ -1,0 +1,4 @@
+# LOCAL DEVELOPMENT ONLY; put real values in an ignored .dev.vars file.
+# In Cloudflare, use encrypted Preview secrets (never VITE_* variables).
+SITE_PASSWORD=REPLACE-WITH-A-STRONG-UNIQUE-PASSPHRASE
+SESSION_SECRET=REPLACE-WITH-AT-LEAST-32-RANDOM-CHARACTERS

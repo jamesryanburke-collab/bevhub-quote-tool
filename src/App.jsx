@@ -302,9 +302,9 @@ function runTests() {
 }
 
 function BevHubPricingApp() {
-  // Authentication is provided by Cloudflare Access before this app loads.
+  // Shared records require the server-checked site-password session.
   function handleLogout() {
-    window.location.assign("/cdn-cgi/access/logout");
+    window.BevHubWorkspace.signOut();
   }
   const [clientName, setClientName] = useState("Client Name");
   const [annualCases, setAnnualCases] = useState("300000");
@@ -354,15 +354,10 @@ function BevHubPricingApp() {
     }
   });
 
-  const [savedQuotes, setSavedQuotes] = useState(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      const saved = JSON.parse(window.localStorage.getItem("bevhubSavedQuotes") || "[]");
-      return Array.isArray(saved) ? saved : [];
-    } catch {
-      return [];
-    }
-  });
+  const workspace = window.BevHubWorkspace;
+  const [savedQuotes, setSavedQuotes] = useState(workspace.quotes);
+  const [savingQuote, setSavingQuote] = useState(false);
+  const [activeRevision, setActiveRevision] = useState(null);
   const [savedQuoteSearch, setSavedQuoteSearch] = useState("");
   const [savedQuoteStatusFilter, setSavedQuoteStatusFilter] = useState("All");
   const [activeSavedQuoteId, setActiveSavedQuoteId] = useState(null);
@@ -374,11 +369,35 @@ function BevHubPricingApp() {
     }
   }, [quoteDisplay]);
 
+  async function refreshSharedQuotes() {
+    const rows = await workspace.refreshQuotes();
+    setSavedQuotes(rows);
+  }
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem("bevhubSavedQuotes", JSON.stringify(savedQuotes));
-    }
-  }, [savedQuotes]);
+    const refresh = () => refreshSharedQuotes().catch(error => setSaveNotice(error.message));
+    refresh();
+    const timer = window.setInterval(refresh, 15000);
+    window.addEventListener("focus", refresh);
+    return () => { window.clearInterval(timer); window.removeEventListener("focus", refresh); };
+  }, [workspace]);
+
+  async function importBrowserQuotes() {
+    if (!window.confirm("Import quotes saved in this browser into the shared workspace? Existing shared records will be skipped. Local copies remain unchanged.")) return;
+    setSavingQuote(true);
+    try {
+      const local = JSON.parse(window.localStorage.getItem("bevhubSavedQuotes") || "[]");
+      const existing = await workspace.refreshQuotes();
+      const known = new Set(existing.map(q => q.id));
+      let imported = 0;
+      for (const quote of local) {
+        if (!quote.id || known.has(quote.id)) continue;
+        await workspace.save("quote", { ...quote, _revision: undefined, originalQuoteNumber: quote.quoteNumber });
+        known.add(quote.id); imported++;
+      }
+      await refreshSharedQuotes(); setSaveNotice(`${imported} browser quotes imported. Local copies were kept.`);
+    } catch (error) { await refreshSharedQuotes().catch(() => {}); setSaveNotice(`Import stopped: ${error.message}. Completed records are shared; retry skips them.`); }
+    finally { setSavingQuote(false); }
+  }
 
   function setQuoteOption(key, checked) {
     setQuoteDisplay((current) => ({ ...current, [key]: checked }));
@@ -937,31 +956,23 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
     };
   }
 
-  function saveCurrentQuote() {
+  async function saveCurrentQuote() {
+    if (savingQuote) return;
+    setSavingQuote(true);
     const now = new Date().toISOString();
-    if (activeSavedQuoteId) {
-      setSavedQuotes((current) => current.map((quote) => {
-        if (quote.id !== activeSavedQuoteId) return quote;
-        return {
-          ...currentQuoteSnapshot(quote.quoteNumber, quote.status),
-          id: quote.id,
-          createdAt: quote.createdAt || now,
-          updatedAt: now,
-        };
-      }));
-      setSaveNotice("Saved quote updated.");
-    } else {
-      const newQuote = {
-        ...currentQuoteSnapshot(),
-        id: `quote-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        createdAt: now,
-        updatedAt: now,
+    try {
+      const existing = savedQuotes.find(q => q.id === activeSavedQuoteId);
+      const record = {
+        ...currentQuoteSnapshot(existing?.quoteNumber, existing?.status),
+        id: activeSavedQuoteId || crypto.randomUUID(),
+        createdAt: existing?.createdAt || now, updatedAt: now,
+        _revision: activeSavedQuoteId ? activeRevision : undefined,
       };
-      setSavedQuotes((current) => [newQuote, ...current]);
-      setActiveSavedQuoteId(newQuote.id);
-      setSaveNotice(`${newQuote.quoteNumber} saved.`);
-    }
-    window.setTimeout(() => setSaveNotice(""), 2500);
+      const saved = await workspace.save("quote", record);
+      setActiveSavedQuoteId(saved.id); setActiveRevision(saved._revision);
+      await refreshSharedQuotes(); setSaveNotice(`${saved.quoteNumber} saved to the shared workspace.`);
+    } catch (error) { setSaveNotice(error.message + " Your calculator inputs are still here. Reopen the shared quote before retrying a conflict."); }
+    finally { setSavingQuote(false); }
   }
 
   function loadSavedQuote(quote, duplicate = false) {
@@ -1000,25 +1011,34 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
     setTrialDaysReserved(quote.trialDaysReserved ?? "1");
     if (quote.quoteDisplay) setQuoteDisplay({ ...RECOMMENDED_QUOTE_DISPLAY, ...quote.quoteDisplay });
     setActiveSavedQuoteId(duplicate ? null : quote.id);
+    setActiveRevision(duplicate ? null : quote._revision);
     setSaveNotice(duplicate ? `Loaded a copy of ${quote.quoteNumber}. Save to create a new quote.` : `${quote.quoteNumber} loaded.`);
     window.scrollTo({ top: 0, behavior: "smooth" });
     window.setTimeout(() => setSaveNotice(""), 3000);
   }
 
-  function deleteSavedQuote(id) {
-    const quote = savedQuotes.find((item) => item.id === id);
-    if (!quote) return;
-    if (typeof window !== "undefined" && !window.confirm(`Delete ${quote.quoteNumber} for ${quote.clientName}?`)) return;
-    setSavedQuotes((current) => current.filter((item) => item.id !== id));
-    if (activeSavedQuoteId === id) setActiveSavedQuoteId(null);
+  async function deleteSavedQuote(id) {
+    const quote = savedQuotes.find(q => q.id === id);
+    if (!quote || !window.confirm(`Delete ${quote.quoteNumber} for ${quote.clientName} from the shared workspace?`)) return;
+    try {
+      await workspace.remove("quote", quote); await refreshSharedQuotes();
+      if (activeSavedQuoteId === id) { setActiveSavedQuoteId(null); setActiveRevision(null); }
+      setSaveNotice("Shared quote deleted. Its history is retained for recovery.");
+    } catch (error) { setSaveNotice(error.message); }
   }
 
-  function updateSavedQuoteStatus(id, status) {
-    setSavedQuotes((current) => current.map((quote) => quote.id === id ? { ...quote, status, updatedAt: new Date().toISOString() } : quote));
+  async function updateSavedQuoteStatus(id, status) {
+    const quote = savedQuotes.find(q => q.id === id);
+    try {
+      const saved = await workspace.save("quote", { ...quote, status, updatedAt: new Date().toISOString() });
+      // An open draft stays pinned to the revision it was opened from. Reopen after a status change.
+      await refreshSharedQuotes(); setSaveNotice(`${saved.quoteNumber} status saved.`);
+    } catch (error) { setSaveNotice(error.message); }
   }
 
   function startNewQuote() {
     setActiveSavedQuoteId(null);
+    setActiveRevision(null);
     setSaveNotice("New quote mode. Your current calculator values were left in place.");
     window.setTimeout(() => setSaveNotice(""), 2500);
   }
@@ -1054,10 +1074,11 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
             </button>
             <button
               type="button"
+              disabled={savingQuote}
               onClick={saveCurrentQuote}
               className="rounded-xl bg-green-700 px-4 py-2 text-sm font-semibold text-white hover:bg-green-800"
             >
-              {activeSavedQuoteId ? "Update Saved Quote" : "Save Quote"}
+              {savingQuote ? "Saving…" : activeSavedQuoteId ? "Update Saved Quote" : "Save Quote"}
             </button>
             <button
               type="button"
@@ -1079,7 +1100,7 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h2 className="text-xl font-semibold">Saved Quotes / Quick Reference</h2>
-              <p className="mt-1 text-sm text-slate-500">Quotes are saved in this browser so you can reopen and reference them without downloading a file.</p>
+              <p className="mt-1 text-sm text-slate-500">Quotes are shared with the members of your workspace. Changes from teammates refresh automatically.</p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row">
               <input
@@ -1152,7 +1173,8 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
           )}
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
             <span>{filteredSavedQuotes.length} of {savedQuotes.length} saved quote{savedQuotes.length === 1 ? '' : 's'}</span>
-            <span>Browser storage only. Clearing site data can remove this list.</span>
+            <span>Shared workspace storage. Reopen a quote to load changes made by a teammate.</span>
+            <button disabled={savingQuote} onClick={importBrowserQuotes} className="rounded-lg border px-3 py-2 font-semibold">Import browser quotes</button>
           </div>
         </section>
 
@@ -1665,15 +1687,16 @@ function Signature({ title, showPo = false }) {
 // Contract files are hosted at /contracts/ and share the existing origin.
 export default function App() {
   const [workArea, setWorkArea] = React.useState("pricing");
+  const [contractsOpened, setContractsOpened] = React.useState(false);
   return (
     <div>
       <nav style={{display:"flex",gap:12,alignItems:"center",padding:"12px 24px",background:"#1b2941",color:"white",fontFamily:"Arial,sans-serif"}}>
         <strong style={{marginRight:16}}>BEV-HUB</strong>
         <button onClick={()=>setWorkArea("pricing")} aria-pressed={workArea==="pricing"} style={{padding:"8px 12px",borderRadius:5,fontWeight:600,color:"#1b2941",background:workArea==="pricing"?"#dceafd":"#fff"}}>Tolling Calculator</button>
-        <button onClick={()=>setWorkArea("contracts")} aria-pressed={workArea==="contracts"} style={{padding:"8px 12px",borderRadius:5,fontWeight:600,color:"#1b2941",background:workArea==="contracts"?"#dceafd":"#fff"}}>Contract Exhibits A–D</button>
+        <button onClick={()=>{setContractsOpened(true);setWorkArea("contracts")}} aria-pressed={workArea==="contracts"} style={{padding:"8px 12px",borderRadius:5,fontWeight:600,color:"#1b2941",background:workArea==="contracts"?"#dceafd":"#fff"}}>Contract Exhibits A–D</button>
       </nav>
       <div style={{display:workArea==="pricing"?"block":"none"}}><BevHubPricingApp /></div>
-      {workArea==="contracts" && <iframe title="Bev-Hub Contract Exhibit Generator" src="/contracts/index.html" style={{display:"block",height:"calc(100vh - 66px)",width:"100%",border:"none"}} />}
+      {contractsOpened && <div style={{display:workArea==="contracts"?"block":"none"}}><iframe title="Bev-Hub Contract Exhibit Generator" src="/contracts/index.html" style={{display:"block",height:"calc(100vh - 66px)",width:"100%",border:"none"}} /></div>}
     </div>
   );
 }

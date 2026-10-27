@@ -1,3 +1,7 @@
+# Shared-password workspace development copy
+
+This local variant uses Cloudflare Pages Functions, D1 and private R2 with one site password. It is not deployed. Follow SHARED-PASSWORD-SETUP.md before publishing. The historical notes below describe the earlier preview baseline.
+
 # Bev-Hub combined site - review build
 
 This is a staged source package. Live Cloudflare site has not been changed.

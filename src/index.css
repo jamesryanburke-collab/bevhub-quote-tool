@@ -1,3 +1,11 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+.workspace-screen { max-width: 520px; margin: 10vh auto; padding: 28px; border: 1px solid #cbd5e1; border-radius: 12px; color: #1b2941; background: white; font-family: Arial,sans-serif; }
+.workspace-screen h1 { font-size: 24px; font-weight: 600; margin-bottom: 16px; }
+.workspace-screen p { margin: 14px 0; }
+.workspace-screen input, .workspace-bar input { border: 1px solid #94a3b8; padding: 10px; border-radius: 6px; width: 100%; color: #1b2941; background: white; }
+.workspace-screen button, .workspace-bar button { border: 1px solid #94a3b8; background: #e2ecfa; color: #1b2941; border-radius: 6px; padding: 8px 12px; margin: 6px 8px 6px 0; }
+.workspace-screen button:disabled, .workspace-bar button:disabled { opacity: .5; cursor: wait; }
+.workspace-bar { padding: 10px 24px; background: #f1f5f9; color: #1b2941; border-bottom: 1px solid #cbd5e1; font: 14px Arial,sans-serif; }
