@@ -24,3 +24,6 @@ This is a staged source package. Live Cloudflare site has not been changed.
 - Pricing does not automatically transfer from the tolling calculator to Exhibits A–D. Export approved quote PDF and upload to Exhibit A.
 - Existing repository is public: NEVER commit real client data, quotes or agreements.
 - Local review validation passed: production build, the six built-in calculation checks, 32 independent pricing scenarios, and browser workflow/PDF checks. `npm test` runs 18 quote-import regression scenarios using Node's built-in test runner. The review build reused the workspace's installed dependencies because a fresh install was blocked by proxy connectivity.
+
+## Preview access prerequisite
+The client-side password gate has been removed locally. Enable the Pages preview access policy and verify its coverage before publishing this update. Authentication is provided by Cloudflare Access; the Logout button uses `/cdn-cgi/access/logout`. Protect both preview aliases and unique deployment URLs, including `/contracts/index.html`. Production and `main` remain unchanged.

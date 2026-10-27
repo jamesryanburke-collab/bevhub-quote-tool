@@ -302,44 +302,9 @@ function runTests() {
 }
 
 function BevHubPricingApp() {
-  const ACCESS_PASSWORD = "ChangeThisPassword123!";
-  const ACCESS_MAX_AGE_MS = 8 * 60 * 60 * 1000;
-
-  const [passwordInput, setPasswordInput] = useState("");
-  const [loginError, setLoginError] = useState("");
-  const [isAuthorized, setIsAuthorized] = useState(() => {
-    if (typeof window === "undefined") return false;
-
-    const savedAccess = window.localStorage.getItem("bevhubQuoteAccess") === "true";
-    const savedAt = Number(window.localStorage.getItem("bevhubQuoteAccessAt") || 0);
-    const isStillValid = savedAccess && Date.now() - savedAt < ACCESS_MAX_AGE_MS;
-
-    if (!isStillValid) {
-      window.localStorage.removeItem("bevhubQuoteAccess");
-      window.localStorage.removeItem("bevhubQuoteAccessAt");
-    }
-
-    return isStillValid;
-  });
-
-  function handleLogin() {
-    if (passwordInput === ACCESS_PASSWORD) {
-      window.localStorage.setItem("bevhubQuoteAccess", "true");
-      window.localStorage.setItem("bevhubQuoteAccessAt", String(Date.now()));
-      setIsAuthorized(true);
-      setPasswordInput("");
-      setLoginError("");
-      return;
-    }
-
-    setLoginError("Incorrect password. Please try again.");
-  }
-
+  // Authentication is provided by Cloudflare Access before this app loads.
   function handleLogout() {
-    window.localStorage.removeItem("bevhubQuoteAccess");
-    window.localStorage.removeItem("bevhubQuoteAccessAt");
-    setIsAuthorized(false);
-    setPasswordInput("");
+    window.location.assign("/cdn-cgi/access/logout");
   }
   const [clientName, setClientName] = useState("Client Name");
   const [annualCases, setAnnualCases] = useState("300000");
@@ -645,6 +610,20 @@ function BevHubPricingApp() {
     htmlLine(quoteDisplay.lineWeeksNeeded, "Line Weeks / Run", result.lineWeeksNeeded.toFixed(2), true),
   ].join("");
 
+  const selectedMaterialDefaults = MATERIAL_DEFAULTS[canSize] || MATERIAL_DEFAULTS["12 oz Sleek"];
+  const materialGroups = [
+    [canEndMode, "Cans and Ends", toNumber(canEndCostPerCan, selectedMaterialDefaults.canEnd)],
+    [trayMode, "Trays", toNumber(trayCostPerCase, result.casePack === 24 ? selectedMaterialDefaults.tray24 : selectedMaterialDefaults.tray12) / result.casePack],
+    [caseLabelMode, "Case Labels", toNumber(caseLabelCostPerCase, 0.011) / result.casePack],
+    [palletMode, "Pallet Materials", toNumber(palletMaterialCostPerPallet, 13.03) / Math.max(toNumber(casesPerPallet, 1), 1) / result.casePack],
+    [sleeveMode, "Sleeve Application", toNumber(sleeveCostPerCan, 0.1)],
+    [cartonMode, "Carton Application", toNumber(cartonCostPerCan, 0.0225)],
+  ];
+  function materialPriceLabel(mode, unitCost) {
+    if (mode === "clientSupplied" || mode === "notNeeded") return modeLabel(mode);
+    return `${money(unitCost, 4)} / can (${money(unitCost * result.casePack, 2)} / case) — ${mode === "included" ? "Included in tolling" : "Additional cost"}`;
+  }
+
   // Additional-cost materials only; included items are already inside tolling.
   // No changes are made to calculateQuote or to price-per-can mathematics.
   const materialQuoteLines = [
@@ -653,6 +632,10 @@ function BevHubPricingApp() {
     [caseLabelMode, "Case Labels", result.caseLabelCost],
     [palletMode, "Pallet Materials", result.palletCost],
   ].filter(([mode, , cost]) => mode === "additional" && cost > 0);
+  const serviceQuoteLines = [
+    [sleeveMode, "Sleeve Application", result.sleeveCost],
+    [cartonMode, "Carton Application", result.cartonCost],
+  ].filter(([mode]) => mode === "additional");
 
   const quotePricingHtml = [
     htmlLine(quoteDisplay.facilityFee && pricingProgram === "trial", "Daily Facility Fee", money(programPricing.facilityRate, 2), true),
@@ -661,7 +644,10 @@ function BevHubPricingApp() {
       ...materialQuoteLines.map(([, label, cost]) => htmlLine(true, label, `${money(cost, 4)} / can`, true)),
       htmlLine(true, "Materials Subtotal", `${money(result.materialsPerCan, 4)} / can`, true),
     ] : []),
-    htmlLine(quoteDisplay.services, "Additional Services", `${money(result.servicesPerCan, 4)} / can`, true),
+    ...(quoteDisplay.services ? [
+      ...serviceQuoteLines.map(([, label, cost]) => htmlLine(true, label, `${money(cost, 4)} / can`, true)),
+      htmlLine(true, "Additional Services Subtotal", `${money(result.servicesPerCan, 4)} / can`, true),
+    ] : []),
     htmlLine(quoteDisplay.pricePerCan, "Estimated Total", `${money(programPricing.pricePerCan, 4)} / can`, true),
     htmlLine(quoteDisplay.pricePerCase, "Estimated Total", `${money(programPricing.pricePerCase, 2)} / case`, true),
     htmlLine(quoteDisplay.productTotal && pricingProgram === "flex", "Estimated Campaign Total", money(programPricing.productionTotal, 2), true),
@@ -669,14 +655,10 @@ function BevHubPricingApp() {
     htmlLine(quoteDisplay.quoteTotal && pricingProgram === "trial", "Estimated Quote Total", money(programPricing.totalQuote, 2), true),
   ].join("");
 
-  const materialsRowsHtml = [
-    htmlLine(quoteDisplay.cansEnds, "Cans and Ends", modeLabel(canEndMode), true),
-    htmlLine(quoteDisplay.trays, "Trays", modeLabel(trayMode), true),
-    htmlLine(quoteDisplay.caseLabels, "Case Labels", modeLabel(caseLabelMode), true),
-    htmlLine(quoteDisplay.palletMaterials, "Pallet Materials", modeLabel(palletMode), true),
-    htmlLine(quoteDisplay.sleeveApplication, "Sleeve Application", modeLabel(sleeveMode), true),
-    htmlLine(quoteDisplay.cartonApplication, "Carton Application", modeLabel(cartonMode), true),
-  ].join("");
+  const materialDisplayKeys = ["cansEnds", "trays", "caseLabels", "palletMaterials", "sleeveApplication", "cartonApplication"];
+  const materialsRowsHtml = materialGroups.map(([mode, label, cost], index) =>
+    htmlLine(quoteDisplay[materialDisplayKeys[index]], label, materialPriceLabel(mode, cost), true)
+  ).join("");
 
   const standardTermsHtml = quoteDisplay.standardTerms ? `<p>*This quote is based on the production scope, packaging configuration, and assumptions outlined above. Final pricing is subject to confirmation of product specifications, packaging requirements, production schedule, and executed commercial agreement.</p><p>*Acceptance of this quotation constitutes the client's obligation to issue a production purchase order (PO) for each authorized production run.</p><p>*Bev-Hub has not produced this product previously and pricing is based on the information provided during the quoting process.</p><p>*Bev-Hub will manufacture strictly to the client-approved formulation and specifications. Bev-Hub assumes no responsibility for formulation performance, stability, or market outcomes, provided production is completed without human error or equipment malfunction.</p>` : "";
   const commercializationHtml = quoteDisplay.commercializationTerm ? `<p>*Standard commercialization through Process Authority is estimated at $3,000 per SKU.</p>` : "";
@@ -804,6 +786,8 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
     `Cases Per Production Week: ${whole(result.weeklyCases)}`,
     pricingProgram === "trial" ? `Daily Facility Fee: ${money(programPricing.facilityRate, 2)}` : "",
     `Tolling: ${money(programPricing.customerTolling, 4)} / can`,
+    ...(quoteDisplay.materials ? materialGroups.slice(0, 4).map(([mode, label, cost]) => `${label}: ${materialPriceLabel(mode, cost)}`) : []),
+    ...(quoteDisplay.services ? materialGroups.slice(4).map(([mode, label, cost]) => `${label}: ${materialPriceLabel(mode, cost)}`) : []),
     `Estimated Total: ${money(programPricing.pricePerCan, 4)} / can`,
     `Estimated Total: ${money(programPricing.pricePerCase, 2)} / case`,
     quoteDisplay.productTotal && pricingProgram === "trial" ? `Estimated Product Total: ${money(programPricing.productionTotal, 2)}` : "",
@@ -1047,52 +1031,6 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
     return matchesSearch && matchesStatus;
   });
 
-  if (!isAuthorized) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950 p-6 text-slate-900">
-        <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-2xl">
-          <div className="mb-6">
-            <h1 className="text-2xl font-semibold">Bev-Hub Quote Tool</h1>
-            <p className="mt-2 text-sm text-slate-600">
-              Enter the internal password to access the Manhattan pricing calculator.
-            </p>
-          </div>
-
-          <label className="block space-y-2">
-            <span className="text-sm font-medium text-slate-700">Password</span>
-            <input
-              type="password"
-              value={passwordInput}
-              onChange={(event) => {
-                setPasswordInput(event.target.value);
-                setLoginError("");
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") handleLogin();
-              }}
-              placeholder="Enter password"
-              className="w-full rounded-xl border px-4 py-3 text-sm"
-              autoFocus
-            />
-          </label>
-
-          {loginError && <div className="mt-3 text-sm font-medium text-red-600">{loginError}</div>}
-
-          <button
-            type="button"
-            onClick={handleLogin}
-            className="mt-5 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800"
-          >
-            Login
-          </button>
-
-          <p className="mt-4 text-xs text-slate-500">
-            Access expires after 8 hours or when you log out.
-          </p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-slate-50 p-6 text-slate-900">
@@ -1389,6 +1327,12 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
                 <a href={dataHref(csvText, "text/csv")} download={`Quote Calculation - ${safeFileName(clientName)}.csv`} className="rounded-xl border bg-white px-3 py-2 text-center text-sm font-semibold hover:bg-slate-50">Export CSV</a>
               </div>
 
+              <div className="mb-5 rounded-xl border bg-slate-50 p-4">
+                <h3 className="mb-3 font-semibold">Material and Service Pricing</h3>
+                {materialGroups.map(([mode, label, cost]) => (
+                  <QuoteLine key={label} label={label} value={materialPriceLabel(mode, cost)} />
+                ))}
+              </div>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {pricingProgram === "trial" && <Output label="Daily Facility Fee" value={money(programPricing.facilityRate, 2)} />}
                 {pricingProgram === "trial" && <Output label="Estimated Product Total" value={money(programPricing.productionTotal, 2)} />}
@@ -1404,7 +1348,7 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
                 {pricingProgram === "flex" && <Output label="Recommended Increase" value={`${money(programPricing.recommendedRecoveryPerCan, 4)} / can (${percent(programPricing.flexRecommendedIncreasePct)})`} />}
 
                 <Output label="Tolling" value={`${money(programPricing.customerTolling, 4)} / can`} />
-                <Output label="Materials" value={`${money(result.materialsPerCan, 4)} / can`} />
+                <Output label="Additional Materials Subtotal" value={`${money(result.materialsPerCan, 4)} / can`} />
                 <Output label="Supplied COGS" value={`${money(result.suppliedCogsPerCan, 4)} / can`} />
                 <Output label="Additional Services" value={`${money(result.servicesPerCan, 4)} / can`} />
                 <Output label="Estimated Total" value={`${money(programPricing.pricePerCan, 4)} / can`} />
@@ -1535,7 +1479,10 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
                       <QuoteLine label="Materials Subtotal" value={`${money(result.materialsPerCan, 4)} / can`} strong />
                     </>
                   )}
-                  {quoteDisplay.services && <QuoteLine label="Additional Services" value={`${money(result.servicesPerCan, 4)} / can`} />}
+                  {quoteDisplay.services && <>
+                    {serviceQuoteLines.map(([, label, cost]) => <QuoteLine key={label} label={label} value={`${money(cost, 4)} / can`} />)}
+                    <QuoteLine label="Additional Services Subtotal" value={`${money(result.servicesPerCan, 4)} / can`} />
+                  </>}
                   {quoteDisplay.pricePerCan && <QuoteLine label="Estimated Total" value={`${money(programPricing.pricePerCan, 4)} / can`} strong />}
                   {quoteDisplay.pricePerCase && <QuoteLine label="Estimated Total" value={`${money(programPricing.pricePerCase, 2)} / case`} strong />}
                   {quoteDisplay.productTotal && pricingProgram === "flex" && <QuoteLine label="Estimated Campaign Total" value={money(programPricing.productionTotal, 2)} strong />}
@@ -1549,12 +1496,9 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
               <div className="mt-8">
                 <h4 className="mb-3 border-b pb-2 text-lg font-semibold">Materials and Services</h4>
                 <div className="grid grid-cols-1 gap-x-10 text-sm md:grid-cols-2">
-                  {quoteDisplay.cansEnds && <QuoteLine label="Cans and Ends" value={modeLabel(canEndMode)} />}
-                  {quoteDisplay.trays && <QuoteLine label="Trays" value={modeLabel(trayMode)} />}
-                  {quoteDisplay.caseLabels && <QuoteLine label="Case Labels" value={modeLabel(caseLabelMode)} />}
-                  {quoteDisplay.palletMaterials && <QuoteLine label="Pallet Materials" value={modeLabel(palletMode)} />}
-                  {quoteDisplay.sleeveApplication && <QuoteLine label="Sleeve Application" value={modeLabel(sleeveMode)} />}
-                  {quoteDisplay.cartonApplication && <QuoteLine label="Carton Application" value={modeLabel(cartonMode)} />}
+                  {materialGroups.map(([mode, label, cost], index) => quoteDisplay[materialDisplayKeys[index]] && (
+                    <QuoteLine key={label} label={label} value={materialPriceLabel(mode, cost)} />
+                  ))}
                 </div>
               </div>
             )}
