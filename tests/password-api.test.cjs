@@ -60,3 +60,24 @@ test('Login rate limit and fail-closed configuration',async()=>{
   assert.equal((await onRequest({env:{},request:new Request('https://preview.test/api/session')})).status,503);
  }finally{f.sql.close();}
 });
+
+test('Mutation origin, private-file parent permissions and independent secret rotation',async()=>{
+ const {onRequest}=await import('../functions/api/[[path]].js');const f=fixture(),origin='https://review.test';
+ const call=(route,method='GET',body,session='',headers={})=>onRequest({env:f.env,request:new Request(origin+'/api/'+route,{method,headers:{...(method==='GET'?{}:{Origin:origin}),...(session?{Cookie:session}:{}),...headers},...(body===undefined?{}:{body:typeof body==='string'?body:JSON.stringify(body)})})});
+ try{
+  const session=(await call('login','POST',{password:f.env.SITE_PASSWORD})).headers.get('Set-Cookie').split(';')[0];
+  assert.equal((await call('records/client/c','PUT',{profile:{}},session,{'Origin':'https://other.test'})).status,403);
+  assert.equal((await call('records/client/c','PUT',{profile:{}},session)).status,200);
+  assert.equal((await call('files?client=c&key=quote&name=q.pdf','POST','%PDF-test',session,{'Content-Type':'application/pdf'})).status,200);
+  const files=await (await call('files?client=c','GET',undefined,session)).json();
+  assert.equal((await call('records/client/c','DELETE',undefined,session,{'If-Match':'1'})).status,200);
+  assert.equal((await call('files/'+files[0].object_id,'GET',undefined,session)).status,404);
+  assert.deepEqual(await (await call('files?client=c','GET',undefined,session)).json(),[]);
+  assert.equal((await call('files?client=c&key=quote','POST','x',session)).status,404);
+  f.env.SESSION_SECRET=randomBytes(48).toString('base64url');
+  assert.equal((await call('session','GET',undefined,session)).status,401);
+  for(const [key,value] of [['DB',null],['FILES',null],['SITE_PASSWORD','short'],['SESSION_SECRET','short']]){
+   const saved=f.env[key];f.env[key]=value;assert.equal((await call('session')).status,503);f.env[key]=saved;
+  }
+ }finally{f.sql.close()}
+});
