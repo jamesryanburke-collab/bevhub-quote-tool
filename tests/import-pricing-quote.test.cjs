@@ -3,7 +3,7 @@ const path=require('node:path');
 const {test}=require('node:test');
 const s=fs.readFileSync(path.join(__dirname,'../public/contracts/index.html'),'utf8');
 test('quote imports transfer annual volume and require an explicit nonannual volume choice',()=>{
-const fn=s.slice(s.indexOf('function importPricingQuote('),s.indexOf("window.addEventListener('message'"));
+const fn=s.slice(s.indexOf('function importPricingQuote('),s.indexOf('function renderQuoteChoices('));
 let count=0;
 for(const program of ['annual',undefined,'flex','trial'])for(const action of ['CLEAR','RETAIN',null,'invalid']){
  const quote={id:'new',clientName:'New Customer',canSize:'16 oz',casePack:'12',annualCases:'12345',pricingProgram:program};

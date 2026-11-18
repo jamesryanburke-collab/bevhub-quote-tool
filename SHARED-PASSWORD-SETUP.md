@@ -1,5 +1,7 @@
 # Shared-password workspace setup
 
+See [WORKSPACE-UPDATE.md](WORKSPACE-UPDATE.md) for the November reliability update, quote-file format, backup/recovery behavior, and one-time Cloudflare handoff.
+
 Bev-Hub uses Cloudflare Pages Functions, D1 and private R2 with one server-checked password. There is no Supabase, Google account requirement, invitation system or per-user identity.
 
 The shared workspace has been deployed on `bev-hub-preview`; the owner reported successful login and sharing. The earlier manual Cloudflare Access email gate was removed by the owner. These are historical observations, not a current dashboard inspection. `main` remains the older production application. See [RELEASE-READINESS.md](RELEASE-READINESS.md) for the review findings and controlled release procedure.

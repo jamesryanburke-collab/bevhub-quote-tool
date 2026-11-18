@@ -89,4 +89,7 @@ with sync_playwright() as p:
  anonymous,outsider=browser();outsider.goto(base);outsider.get_by_label('Site password').wait_for();assert outsider.get_by_role('button',name='Save Quote',exact=True).count()==0
  assert anonymous.request.get(base+'/api/records/quote').status==401;assert anonymous.request.get(base+'/api/files?client=unknown').status==401;print('Signed-out browser cannot read shared records or attachments',flush=True)
  a.get_by_role('button',name='Tolling Calculator').click();a.get_by_role('button',name='Sign out',exact=True).click();a.get_by_label('Site password').wait_for();assert a.evaluate("fetch('/api/session').then(r=>r.status)")==401;assert z.evaluate("fetch('/api/session').then(r=>r.status)")==200;print('Sign out revokes only that browser session',flush=True)
- assert not errors,errors;print('No uncaught browser errors',flush=True);b.close()
+ assert not errors,errors;print('No uncaught browser errors',flush=True)
+ from reliability_acceptance import run
+ run(b,base,password,out)
+ b.close()

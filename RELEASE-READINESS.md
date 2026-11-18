@@ -1,5 +1,7 @@
 # Bev-Hub controlled release review — 2026-10-29
 
+Historical review. Subsequent preview fixes were merged with owner approval; see [WORKSPACE-UPDATE.md](WORKSPACE-UPDATE.md) for the November consolidated update. Production gates below still require verification.
+
 **Decision: HOLD production release.** Local functionality passes after the development-branch ZIP fix. Live configuration, secret rotation, migration/backup decisions and production smoke tests remain owner gates. No merge, production deployment, resource provisioning, data deletion or paid Cloudflare action was performed during this review.
 
 ## Source and scope

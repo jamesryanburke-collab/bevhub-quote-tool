@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { WorkspaceStore, api } from './store.js';
+import WorkspaceTools from './WorkspaceTools.jsx';
 
 export default function WorkspaceGate({ children }) {
  const [loading,setLoading]=useState(true),[authenticated,setAuthenticated]=useState(false);
  const [store,setStore]=useState(null),[password,setPassword]=useState('');
- const [message,setMessage]=useState(''),[busy,setBusy]=useState(false);
+ const [message,setMessage]=useState(''),[busy,setBusy]=useState(false),[connection,setConnection]=useState('Connected');
  async function signOut(){
+  if(window.BevHubWorkspace&&!window.BevHubWorkspace.confirmLeave()){setMessage('Sign out cancelled. Keep your drafts open or finish saving first.');return;}
   try { await api('logout',{method:'POST'});window.BevHubWorkspace=null;setStore(null);setAuthenticated(false);setPassword('');setMessage('Signed out.'); }
   catch(e){setMessage(e.message);}
  }
@@ -22,8 +24,11 @@ export default function WorkspaceGate({ children }) {
    finally{if(live)setLoading(false);}
   })();
   const expired=()=>{setAuthenticated(false);setMessage('Your session expired. Sign in again to continue. Your open drafts are kept.');};
+  const unload=e=>{if(window.BevHubWorkspace?.hasUnsaved()){e.preventDefault();e.returnValue=''}};
+  const connectivity=e=>setConnection(e.detail);
+  window.addEventListener('beforeunload',unload);window.addEventListener('bevhub:connection',connectivity);
   window.addEventListener('bevhub:session-expired',expired);
-  return()=>{live=false;window.removeEventListener('bevhub:session-expired',expired);};
+  return()=>{live=false;window.removeEventListener('bevhub:session-expired',expired);window.removeEventListener('beforeunload',unload);window.removeEventListener('bevhub:connection',connectivity);};
  },[]);
  return <>
   {loading?<main className="workspace-screen">Opening the shared workspace…</main>:!authenticated?<main className="workspace-screen">
@@ -34,7 +39,7 @@ export default function WorkspaceGate({ children }) {
     <label htmlFor="site-password">Site password</label><input id="site-password" type="password" autoComplete="current-password" value={password} onChange={e=>setPassword(e.target.value)} required />
     <button disabled={busy}>{busy?'Signing in…':'Sign in'}</button>
    </form>{message&&<p role="status">{message}</p>}
-  </main>:<section className="workspace-bar" aria-label="Shared workspace"><span>Shared workspace</span><button onClick={signOut}>Sign out</button>{message&&<span role="alert">{message}</span>}</section>}
+  </main>:<section className="workspace-bar" aria-label="Shared workspace"><span>Shared workspace · {connection}</span><WorkspaceTools store={store}/><button onClick={signOut}>Sign out</button>{message&&<span role="alert">{message}</span>}</section>}
   <div hidden={!authenticated||loading}>{store?children:null}</div>
  </>;
 }

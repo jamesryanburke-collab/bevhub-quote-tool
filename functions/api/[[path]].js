@@ -1,3 +1,4 @@
+import {validateRecord} from '../../shared/validation.js';
 const COOKIE = '__Host-bevhub_session';
 const SESSION_SECONDS = 8 * 60 * 60;
 const MAX_FILE = 20 * 1024 * 1024;
@@ -78,6 +79,46 @@ export async function onRequest({request,env}) {
   const session=/^[a-f0-9]{64}$/.test(token)?await env.DB.prepare('SELECT * FROM sessions WHERE token_hash=? AND expires_at>? AND config_version=?').bind(await sha(token),now,configVersion).first():null;
   if(!session)throw new HttpError(401,'Sign in to the shared workspace.');
   if(parts[0]==='session'&&request.method==='GET')return response({authenticated:true});
+  if(parts[0]==='storage'&&request.method==='GET'){
+   const budget=await env.DB.prepare('SELECT bytes FROM storage_budget WHERE id=?').bind(1).first();
+   return response({usedBytes:budget?.bytes||0,limitBytes:512*1024*1024,maxFileBytes:MAX_FILE});
+  }
+  if(parts[0]==='backup'&&request.method==='GET'){
+   const records=await env.DB.prepare('SELECT * FROM records ORDER BY kind,id').bind().all();
+   const files=await env.DB.prepare('SELECT * FROM files ORDER BY client_id,file_key').bind().all();
+   const history=await env.DB.prepare('SELECT * FROM record_history ORDER BY kind,id,revision').bind().all();
+   return response({format:'bevhub-workspace',version:1,createdAt:new Date().toISOString(),records:records.results,files:files.results,history:history.results});
+  }
+  if(parts[0]==='backup-file'&&request.method==='GET'){
+   const manifest=await env.DB.prepare('SELECT * FROM files WHERE object_id=?').bind(idOf(parts[1])).first();
+   if(!manifest)throw new HttpError(404,'Backup attachment not found.');
+   const object=await env.FILES.get(manifest.object_id);if(!object)throw new HttpError(404,'Backup attachment not found.');
+   return new Response(object.body,{headers:{'Content-Type':'application/octet-stream','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Disposition':'attachment'}});
+  }
+  if(parts[0]==='recovery'&&request.method==='GET'){
+   const rows=await env.DB.prepare('SELECT * FROM records ORDER BY updated_at DESC').bind().all();
+   return response(rows.results.map(row=>({...unpack(row),_kind:row.kind,_deleted:!!row.deleted,_updatedAt:row.updated_at})));
+  }
+  if(parts[0]==='history'&&request.method==='GET'){
+   const kind=kindOf(parts[1]),id=idOf(parts[2]);
+   const rows=await env.DB.prepare('SELECT * FROM record_history WHERE kind=? AND id=? ORDER BY revision DESC').bind(kind,id).all();
+   return response(rows.results.map(row=>({...unpack(row),_deleted:!!row.deleted,_updatedAt:row.updated_at})));
+  }
+  if(parts[0]==='restore'&&request.method==='POST'){
+   const kind=kindOf(parts[1]),id=idOf(parts[2]),version=expectedVersion(request,false),body=await jsonBody(request);
+   if(!body||Array.isArray(body)||typeof body!=='object')throw new HttpError(400,'Invalid restore request.');
+   const current=await env.DB.prepare('SELECT * FROM records WHERE kind=? AND id=?').bind(kind,id).first();
+   if(!current||current.revision!==version)throw new HttpError(409,'CONFLICT: record changed. Reload recovery before restoring.');
+   let original=current;
+   if(body.revision!==undefined){
+    if(!Number.isSafeInteger(body.revision)||body.revision<1)throw new HttpError(400,'Invalid historical revision.');
+    original=await env.DB.prepare('SELECT * FROM record_history WHERE kind=? AND id=? AND revision=?').bind(kind,id,body.revision).first();
+   }else if(!current.deleted)throw new HttpError(400,'Choose a previous revision to restore.');
+   if(!original)throw new HttpError(404,'Historical revision not found.');
+   const saved=await env.DB.prepare('UPDATE records SET payload=?,deleted=0,revision=revision+1,updated_at=? WHERE kind=? AND id=? AND revision=? RETURNING *').bind(original.payload,new Date().toISOString(),kind,id,version).first();
+   if(!saved)throw new HttpError(409,'CONFLICT: record changed. Reload recovery.');
+   return response(unpack(saved));
+  }
   if(parts[0]==='records'){
    const kind=kindOf(parts[1]);
    if(parts.length===2&&request.method==='GET'){
@@ -87,6 +128,7 @@ export async function onRequest({request,env}) {
    if(request.method==='PUT'){
     const body=await jsonBody(request);if(!body||Array.isArray(body)||typeof body!=='object')throw new HttpError(400,'Invalid record.');
     const {_revision,_updatedBy,...payload}=body;payload.id=id;
+    try{validateRecord(kind,payload)}catch(e){throw new HttpError(400,e.message)}
     const time=new Date().toISOString();let saved;
     if(version===null){
      saved=await env.DB.prepare("INSERT INTO records(kind,id,payload,quote_number,updated_at) VALUES(?,?,?,CASE WHEN ?='quote' THEN (SELECT coalesce(max(quote_number),0)+1 FROM records WHERE kind='quote') ELSE NULL END,?) ON CONFLICT(kind,id) DO NOTHING RETURNING *")
