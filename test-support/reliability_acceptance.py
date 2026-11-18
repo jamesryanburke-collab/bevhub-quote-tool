@@ -1,3 +1,4 @@
+from playwright.sync_api import expect
 from pathlib import Path
 import json,re,zipfile,hashlib
 
@@ -70,7 +71,7 @@ def run(browser,base,password,out):
  tools.screenshot(path=str(out/'recovery-screen.png'));tools.get_by_role('button',name='Close',exact=True).click()
  print('Workspace backup checksums, import as copies and deleted-record recovery passed',flush=True)
  # Multiple quotes now use searchable selection and display stale links.
- f.locator('#importPricingQuote').click();f.locator('#quoteSearch').fill('Imported Review Updated');f.locator('#quoteChoices button').first.click();assert f.locator('#p_customer').input_value()=='Imported Review Updated';assert f.locator('#p_casePack').input_value()=='12';assert f.locator('#p_annualCases').input_value()=='12345'
+ f.locator('#importPricingQuote').click();f.locator('#quoteSearch').fill('Imported Review Updated');f.locator('#quoteChoices button').first.click();expect(f.locator('#p_customer')).to_have_value('Imported Review Updated');assert f.locator('#p_casePack').input_value()=='12';assert f.locator('#p_annualCases').input_value()=='12345'
  latest=next(q for q in request('records/quote')['body'] if q['id']==original['id']);request('records/quote/'+latest['id'],'PUT',{**latest,'customTerms':'Synthetic revision check'},latest['_revision']);p.evaluate('window.BevHubWorkspace.refreshQuotes()');f.locator('[data-tab=b]').click();assert 'has changed since import' in f.locator('#editor').inner_text()
  p.get_by_role('button',name='Tolling Calculator',exact=True).click();p.set_viewport_size({'width':390,'height':844});assert p.evaluate('document.documentElement.scrollWidth<=window.innerWidth'),'Mobile calculator overflow'
  p.get_by_role('button',name='Import quote file',exact=True).focus();assert p.get_by_role('button',name='Import quote file',exact=True).evaluate('(e)=>document.activeElement===e')

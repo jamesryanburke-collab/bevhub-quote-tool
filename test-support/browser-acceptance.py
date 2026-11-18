@@ -1,4 +1,4 @@
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright,expect
 import json,re,pathlib,os,socket,subprocess,tempfile,time,shutil,zipfile
 import fitz
 ROOT=pathlib.Path(__file__).resolve().parents[1]
@@ -38,7 +38,7 @@ with sync_playwright() as p:
  z.reload();z.get_by_role('button',name='Open',exact=True).first.click();assert field(z,'Client / Brand').input_value()=='Shared Password Customer';print('Shared quote reopened in the other browser',flush=True)
  field(a,'Client / Brand').fill('New Shared Revision');a.get_by_role('button',name='Update Saved Quote').click();a.get_by_text('BH-001 saved to the shared workspace.',exact=True).wait_for()
  field(z,'Client / Brand').fill('Stale Draft Kept');z.get_by_role('button',name='Update Saved Quote').click();z.get_by_text(re.compile('CONFLICT:')).first.wait_for();assert field(z,'Client / Brand').input_value()=='Stale Draft Kept';print('Conflicting edit blocked and draft retained',flush=True)
- a.get_by_role('button',name='Contract Exhibits A–D').click();f=a.frame_locator('iframe');f.locator('#p_customer').wait_for();f.locator('#importPricingQuote').click();assert f.locator('#p_customer').input_value()=='New Shared Revision'
+ a.get_by_role('button',name='Contract Exhibits A–D').click();f=a.frame_locator('iframe');f.locator('#p_customer').wait_for();f.locator('#importPricingQuote').click();expect(f.locator('#p_customer')).to_have_value('New Shared Revision')
  assert f.locator('#p_package').input_value()=='250 ml Slim'
  assert f.locator('#p_casePack').input_value()=='24'
  assert f.locator('#p_annualCases').input_value()=='300000'
