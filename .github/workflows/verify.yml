@@ -1,0 +1,30 @@
+name: Verify pricing and workspace
+on:
+  pull_request:
+    branches: [bev-hub-preview, main]
+  push:
+    branches: [bev-hub-preview]
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - run: python -m pip install -r test-support/requirements-browser.txt
+      - run: python -m playwright install --with-deps chromium
+      - run: npm run test:browser

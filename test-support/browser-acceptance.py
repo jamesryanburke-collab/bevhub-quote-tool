@@ -1,4 +1,4 @@
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright,expect
 import json,re,pathlib,os,socket,subprocess,tempfile,time,shutil,zipfile
 import fitz
 ROOT=pathlib.Path(__file__).resolve().parents[1]
@@ -38,7 +38,7 @@ with sync_playwright() as p:
  z.reload();z.get_by_role('button',name='Open',exact=True).first.click();assert field(z,'Client / Brand').input_value()=='Shared Password Customer';print('Shared quote reopened in the other browser',flush=True)
  field(a,'Client / Brand').fill('New Shared Revision');a.get_by_role('button',name='Update Saved Quote').click();a.get_by_text('BH-001 saved to the shared workspace.',exact=True).wait_for()
  field(z,'Client / Brand').fill('Stale Draft Kept');z.get_by_role('button',name='Update Saved Quote').click();z.get_by_text(re.compile('CONFLICT:')).first.wait_for();assert field(z,'Client / Brand').input_value()=='Stale Draft Kept';print('Conflicting edit blocked and draft retained',flush=True)
- a.get_by_role('button',name='Contract Exhibits A–D').click();f=a.frame_locator('iframe');f.locator('#p_customer').wait_for();f.locator('#importPricingQuote').click();assert f.locator('#p_customer').input_value()=='New Shared Revision'
+ a.get_by_role('button',name='Contract Exhibits A–D').click();f=a.frame_locator('iframe');f.locator('#p_customer').wait_for();f.locator('#importPricingQuote').click();expect(f.locator('#p_customer')).to_have_value('New Shared Revision')
  assert f.locator('#p_package').input_value()=='250 ml Slim'
  assert f.locator('#p_casePack').input_value()=='24'
  assert f.locator('#p_annualCases').input_value()=='300000'
@@ -89,4 +89,7 @@ with sync_playwright() as p:
  anonymous,outsider=browser();outsider.goto(base);outsider.get_by_label('Site password').wait_for();assert outsider.get_by_role('button',name='Save Quote',exact=True).count()==0
  assert anonymous.request.get(base+'/api/records/quote').status==401;assert anonymous.request.get(base+'/api/files?client=unknown').status==401;print('Signed-out browser cannot read shared records or attachments',flush=True)
  a.get_by_role('button',name='Tolling Calculator').click();a.get_by_role('button',name='Sign out',exact=True).click();a.get_by_label('Site password').wait_for();assert a.evaluate("fetch('/api/session').then(r=>r.status)")==401;assert z.evaluate("fetch('/api/session').then(r=>r.status)")==200;print('Sign out revokes only that browser session',flush=True)
- assert not errors,errors;print('No uncaught browser errors',flush=True);b.close()
+ assert not errors,errors;print('No uncaught browser errors',flush=True)
+ from reliability_acceptance import run
+ run(b,base,password,out)
+ b.close()

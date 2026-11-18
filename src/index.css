@@ -9,3 +9,13 @@
 .workspace-screen button, .workspace-bar button { border: 1px solid #94a3b8; background: #e2ecfa; color: #1b2941; border-radius: 6px; padding: 8px 12px; margin: 6px 8px 6px 0; }
 .workspace-screen button:disabled, .workspace-bar button:disabled { opacity: .5; cursor: wait; }
 .workspace-bar { padding: 10px 24px; background: #f1f5f9; color: #1b2941; border-bottom: 1px solid #cbd5e1; font: 14px Arial,sans-serif; }
+.workspace-dialog { width: min(760px, calc(100vw - 24px)); max-height: 85vh; overflow:auto; border:1px solid #cbd5e1; border-radius:12px; padding:24px; color:#1b2941; }
+.workspace-dialog::backdrop {background:rgb(15 23 42 / .5)}
+.workspace-dialog h2 {font-size:20px;font-weight:700}.workspace-dialog h3{font-size:16px;font-weight:700;margin:16px 0 8px}
+.workspace-dialog p{margin:12px 0}.workspace-dialog button{border:1px solid #94a3b8;border-radius:6px;padding:8px 12px;background:#f1f5f9;color:#1b2941}.workspace-dialog button:disabled{opacity:.5}
+.workspace-dialog-heading,.workspace-actions{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.workspace-dialog input{border:1px solid #94a3b8;border-radius:5px;padding:8px;width:100%}
+.workspace-card,.workspace-history{border:1px solid #cbd5e1;border-radius:6px;padding:12px;margin:12px 0}
+.workspace-records{display:flex;flex-direction:column;gap:6px;max-height:220px;overflow:auto;margin-top:12px}.workspace-records button{text-align:left}
+.workspace-dialog pre{font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere;max-height:220px;overflow:auto}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid #2563eb;outline-offset:3px}

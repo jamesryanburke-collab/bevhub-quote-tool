@@ -5,13 +5,19 @@
 </style></head><body>
 <header><div><strong>BEV-HUB</strong><div class="sub">Pricing &amp; Contract Exhibit Generator | A–D</div><div class="status" id="saveStatus">Shared client library</div></div><div class="actions"><button id="importPricingQuote" title="Bring the last saved calculator quote into this contract">Import Saved Quote</button><button id="saveClient">Save Client</button><button id="reloadShared">Reload shared clients</button><button id="importBrowser">Import browser clients</button><button id="backupClient">Download Client Backup</button><button id="restoreClient">Import Client Backup</button><button id="downloadPdf">Download Selected PDF</button><button class="primary" id="downloadZip">Download Contract Package</button></div></header>
 <div class="shell"><aside class="side"><nav class="topnav" id="tabs"><button data-tab="clients">Clients</button><button data-tab="profile">Contract Setup</button><button data-tab="a">Exhibit A</button><button data-tab="b">Exhibit B</button><button data-tab="c">Exhibit C</button><button data-tab="d">Exhibit D</button><button data-tab="pages">PDF Pages</button><button data-tab="review">Review</button></nav><div id="editor"></div></aside><main class="main"><div class="preview-label" id="previewLabel">Exhibit Preview</div><section class="page-paper" id="preview"></section><section id="workspace" class="hidden"></section><iframe id="pricingFrame" class="frame hidden" title="Bev-Hub online tolling calculator" loading="lazy"></iframe></main></div>
-<input type="file" id="projectFile" accept=".json,.zip" hidden><input type="file" id="quoteFile" accept=".pdf" hidden><input type="file" id="specFiles" accept=".docx,.pdf" multiple hidden><script>
+<input type="file" id="projectFile" accept=".json,.zip" hidden><input type="file" id="quoteFile" accept=".pdf" hidden><input type="file" id="specFiles" accept=".docx,.pdf" multiple hidden><dialog id="quotePicker" aria-labelledby="quote-picker-title" style="width:min(650px,95vw);max-height:80vh;overflow:auto;border:1px solid #bdc9d6;border-radius:10px;padding:20px"><h2 id="quote-picker-title">Choose a saved quote</h2><label for="quoteSearch">Search customer or quote number</label><input id="quoteSearch" style="width:100%;padding:10px;margin:10px 0"><div id="quoteChoices"></div><button id="closeQuotePicker">Cancel</button></dialog><script>
 (function(){
 'use strict';
 const CALCULATOR_URL='/';
 const shared=window.parent!==window?window.parent.BevHubWorkspace:null;
 if(!shared){document.body.innerHTML='<main style="padding:32px;font-family:Arial"><h1>Open your shared workspace</h1><p>Sign in to use customer records and contract exhibits.</p><a href="/">Open Bev-Hub</a></main>';return}
-let saveQueue=Promise.resolve(),saveBlocked=false;
+let saveQueue=Promise.resolve(),saveBlocked=false,pendingClientSaves=0,pendingFileOps=0,dirtyClient=false,uploadError=false,clientLoadSequence=0,clientSwitchBusy=false;
+shared.registerGuard('contracts',check=>{
+ const pending=pendingClientSaves>0||pendingFileOps>0||clientSwitchBusy;
+ if(check)return pending||dirtyClient||uploadError||saveBlocked;
+ if(pending){setStatus('Wait for customer and attachment operations to finish.',true);return false}
+ return !(dirtyClient||uploadError||saveBlocked)||confirm('Customer changes or attachments are not saved. Download a backup or retry saving before leaving. Discard unsaved work?');
+});
 const STORE_KEY='bevhub-contract-clients-v1',ACTIVE_KEY='bevhub-contract-active-v1';
 const defaultMaterials=['All ingredients','Cans','Ends / lids','Film','Case labels','Pallets','Slip sheets','Pallet labels','Shrink wrap','Trays','Cartons','Sleeves','Other specialty material'];
 const dHeadings=['Production Scheduling','Product Supplies','Purchase Orders and Shipping','Pack-Out Requirements','Annual Volume','Shipping and Production Records'];
@@ -24,29 +30,38 @@ function setStatus(msg,bad=false){$('saveStatus').textContent=msg;$('saveStatus'
 async function idbList(id){return await shared.listFiles(id)}
 async function idbPut(key,name,blob){await saveNow();await shared.putFile(key,name,blob)}
 async function idbDeleteClient(id){if(library[id]?._revision)await shared.remove('client',library[id]);delete library[id]}
-async function loadFiles(id){files={quote:null,specs:{}};for(const r of await idbList(id)){if(r.key===id+':quote')files.quote={name:r.name,blob:r.blob};else if(r.key.startsWith(id+':spec:'))files.specs[r.name]=r.blob}}
+function lockClientEditor(locked){clientSwitchBusy=locked;document.querySelectorAll('#editor input,#editor textarea,#editor select,#editor button,header button').forEach(el=>{el.disabled=locked})}
+async function readClientFiles(id){const next={quote:null,specs:{}};for(const r of await idbList(id)){if(r.key===id+':quote')next.quote={name:r.name,blob:r.blob};else if(r.key.startsWith(id+':spec:'))next.specs[r.name]=r.blob}return next}
+async function loadFiles(id){const sequence=++clientLoadSequence,next=await readClientFiles(id);if(sequence===clientLoadSequence&&id===activeId)files=next}
 function ensure(){if(!data){const x=blank();activeId=x.id;data=x;library[activeId]=clone(x)}}
 function saveNow(){
  ensure();clearTimeout(saveTimer);
- const snapshot=clone(data),id=snapshot.id;
+ const snapshot=clone(data),id=snapshot.id;pendingClientSaves++;
  const task=saveQueue.then(async()=>{
   if(saveBlocked)throw Error('Saving paused after a conflict or connection error. Download a backup, then reload shared clients.');
-  snapshot._revision=library[id]?._revision;
+  shared.validateClient(snapshot);snapshot._revision=library[id]?._revision;
   const saved=await shared.save('client',snapshot);
   library[id]=saved;
   if(activeId===id)data._revision=saved._revision;
+  if(activeId===id&&JSON.stringify({...data,_revision:undefined})===JSON.stringify({...snapshot,_revision:undefined}))dirtyClient=false;
   writeLibrary();setStatus('Saved to shared workspace');return saved;
  });
+ task.finally(()=>{pendingClientSaves--}).catch(()=>{});
  saveQueue=task.catch(err=>{saveBlocked=true;setStatus(err.message+' Download a backup before reloading.',true)});
  // Callers that await saveNow see failures; older synchronous form handlers still display them.
  task.catch(()=>{});return task;
 }
 async function reloadSharedClients(){
+ if(pendingFileOps||clientSwitchBusy)throw Error('Wait for the attachment or customer operation to finish.');
  if(!confirm('Reload shared customers? Download a backup first if you have unsaved edits.'))return;
- clearTimeout(saveTimer);await saveQueue;saveBlocked=false;
- library=Object.fromEntries((await shared.list('client')).map(c=>[c.id,c]));
- data=library[activeId]?clone(library[activeId]):blank();activeId=data.id;
- await loadFiles(activeId);await shared.refreshQuotes();tab='clients';render();setStatus('Shared clients reloaded');
+ lockClientEditor(true);
+ try{
+  clearTimeout(saveTimer);await saveQueue;
+  const nextLibrary=Object.fromEntries((await shared.list('client')).map(c=>[c.id,c]));
+  const nextData=nextLibrary[activeId]?clone(nextLibrary[activeId]):blank(),nextFiles=await readClientFiles(nextData.id);
+  await shared.refreshQuotes();library=nextLibrary;data=nextData;activeId=data.id;files=nextFiles;saveBlocked=false;dirtyClient=false;uploadError=false;
+  tab='clients';render();setStatus('Shared clients reloaded');
+ }finally{lockClientEditor(false)}
 }
 async function importBrowserClients(){
  if(!confirm('Import customer records and attachments saved in this browser into the shared workspace? Existing shared customers will be skipped. Local copies remain unchanged.'))return;
@@ -68,18 +83,11 @@ function quoteCandidates(){
   const list=shared.quotes.filter(q=>q&&q.clientName);
   return list;
 }
-function importPricingQuote(silent=false){
+function importPricingQuote(silent=false,selectedQuote=null){
   const choices=quoteCandidates();
   if(!choices.length){if(!silent)alert('No saved calculator quotes found in this workspace. Open the Tolling Calculator and save a quote first.');return false}
-  let q=choices[0];
-  if(choices.length>1){
-    if(silent)return false;
-    const answer=prompt('Choose which saved quote to import by number:\n'+choices.map((item,i)=>(i+1)+'. '+(item.quoteNumber||'Draft')+' | '+item.clientName+' | '+(item.annualCases||'')+' cases').join('\n'),'1');
-    if(answer===null)return false;
-    const number=Number(answer);
-    if(!Number.isInteger(number)||number<1||number>choices.length){alert('Please enter a number shown in the list.');return false}
-    q=choices[number-1];
-  }
+  let q=selectedQuote||choices[0];
+  if(choices.length>1&&!selectedQuote){if(!silent)showQuotePicker();return false}
   if(!data)return false;
   const sourceKey=String(q.id||q.quoteNumber||q.clientName);
   const existing=Object.values(library).find(c=>c.linkedQuoteKey===sourceKey);
@@ -108,16 +116,31 @@ function importPricingQuote(silent=false){
   data.profile.annualCases=annualCases;
   data.linkedQuoteKey=sourceKey;
   data.linkedQuoteNumber=String(q.quoteNumber||'');
+  data.linkedQuoteRevision=q._revision;
   saveNow().then(()=>setStatus('Imported '+q.clientName+' from calculator')).catch(()=>{});tab='profile';render();return true;
 }
+function renderQuoteChoices(){
+ const search=$('quoteSearch').value.toLowerCase();
+ $('quoteChoices').innerHTML=quoteCandidates().filter(q=>[q.clientName,q.quoteNumber].some(v=>String(v||'').toLowerCase().includes(search))).map(q=>`<p><button data-pick-quote="${esc(q.id)}">${esc(q.quoteNumber||'Draft')} | ${esc(q.clientName)} | ${esc(q.canSize||'')} | ${esc(q.annualCases||'')} annual cases</button></p>`).join('')||'<p>No matching quotes.</p>';
+}
+function showQuotePicker(){$('quoteSearch').value='';renderQuoteChoices();$('quotePicker').showModal();$('quoteSearch').focus()}
+$('quoteSearch').addEventListener('input',renderQuoteChoices);
+$('closeQuotePicker').addEventListener('click',()=>$('quotePicker').close());
+$('quoteChoices').addEventListener('click',e=>{const b=e.target.closest('[data-pick-quote]');if(!b)return;const q=quoteCandidates().find(q=>q.id===b.dataset.pickQuote);if(q&&importPricingQuote(false,q))$('quotePicker').close()});
 window.addEventListener('message',ev=>{
   if(ev.origin!==window.location.origin||!ev.data)return;
   if(ev.data.type==='BEVHUB_IMPORT_IF_BLANK'&&!data.profile.customer&&!data.profile.legalName&&!data.profile.annualCases)importPricingQuote(true);
   if(ev.data.type==='BEVHUB_IMPORT_SAVED_QUOTE')importPricingQuote();
 });
-function saveSoon(){setStatus('Saving…');clearTimeout(saveTimer);saveTimer=setTimeout(()=>saveNow().catch(()=>{}),600)}
-async function selectClient(id){if(!library[id])return;clearTimeout(saveTimer);if(data)await saveNow();activeId=id;data=clone(library[id]);await loadFiles(id);selected=new Set(['A1','B1','C1','D1']);excludedPages.clear();tab='profile';writeLibrary();render()}
-async function addClient(){clearTimeout(saveTimer);if(data)await saveNow();const x=blank();library[x.id]=clone(x);activeId=x.id;data=x;files={quote:null,specs:{}};selected=new Set(['A1','B1','C1','D1']);excludedPages.clear();writeLibrary();tab='profile';render()}
+function saveSoon(){dirtyClient=true;setStatus('Saving…');clearTimeout(saveTimer);saveTimer=setTimeout(()=>saveNow().catch(()=>{}),600)}
+async function selectClient(id){
+ if(!library[id])return;if(pendingFileOps||clientSwitchBusy)throw Error('Wait for the attachment or customer operation to finish.');lockClientEditor(true);
+ try{clearTimeout(saveTimer);if(data)await saveNow();const nextFiles=await readClientFiles(id);activeId=id;data=clone(library[id]);files=nextFiles;selected=new Set(['A1','B1','C1','D1']);excludedPages.clear();tab='profile';writeLibrary();render();setStatus('Shared customer opened')}finally{lockClientEditor(false)}
+}
+async function addClient(){
+ if(pendingFileOps||clientSwitchBusy)throw Error('Wait for the attachment or customer operation to finish.');lockClientEditor(true);
+ try{clearTimeout(saveTimer);if(data)await saveNow();const x=blank();library[x.id]=clone(x);activeId=x.id;data=x;files={quote:null,specs:{}};selected=new Set(['A1','B1','C1','D1']);excludedPages.clear();writeLibrary();tab='profile';render()}finally{lockClientEditor(false)}
+}
 function field(key,label,type='text'){return `<div class="field"><label for="p_${key}">${label}</label><input id="p_${key}" data-profile="${key}" type="${type}" value="${esc(data.profile[key])}"></div>`}
 function skuField(i,key,label){return `<div class="field"><label>${label}</label><input data-sku="${i}" data-sku-key="${key}" value="${esc(data.skus[i][key])}"></div>`}
 function warningList(){const p=data.profile,a=[];if(!p.customer)a.push('Brand / customer name is blank.');if(!p.legalName)a.push('Customer legal entity is blank.');if(!p.effectiveDate)a.push('Agreement effective date is blank.');if(!p.facility)a.push('Manufacturing facility is blank.');if(!p.annualCases || !(+p.annualCases>0))a.push('Annual volume commitment is missing.');if(!files.quote)a.push('Approved manufacturing quote PDF has not been uploaded.');const unm=data.materials.filter(x=>x.included&&!x.owner);if(unm.length)a.push(unm.length+' included Exhibit C materials are not assigned.');if(!data.skus.length)a.push('No SKUs entered for Exhibit B.');if(data.skus.some(s=>!s.name||!s.can||!s.end||!s.fill))a.push('At least one SKU has incomplete packaging specifications.');if(data.exhibitD.some(x=>x.heading&&(!x.text||!x.text.trim())))a.push('Exhibit D includes empty provisions. Complete or remove unused sections.');a.push('Confirm contractual language and product specifications with Legal and Quality before execution.');return a}
@@ -130,6 +153,7 @@ else if(tab==='c'){html=`<h2>Exhibit C | Product Supplies</h2><p class="hint">In
 else if(tab==='d'){html=`<h2>Exhibit D | Scheduling, Shipping & Handling</h2><p class="hint">Use only provisions approved for this customer. These fields are intentionally blank rather than carrying GHOST-specific contract terms into a new agreement.</p>${data.exhibitD.map((v,i)=>`<div class="card"><div class="bar"><b>Section ${i+1}</b><button data-remove-d="${i}" class="danger">Remove</button></div><div class="field"><label>Section heading</label><input data-d-heading="${i}" value="${esc(v.heading)}"></div><div class="field"><label>Approved provision</label><textarea data-d-text="${i}" placeholder="Enter approved operational terms">${esc(v.text)}</textarea></div></div>`).join('')}<button id="addD">+ Add section</button>`}
 else if(tab==='pages'){const pages=collectPages();pages.forEach(p=>{if(!excludedPages.has(p.key))selected.add(p.key)});html=`<h2>PDF Page Selection</h2><p class="hint">Selections use your current exhibit fields, not a saved GHOST PDF. Every selected page will appear in your downloaded A–D PDF.</p><div class="buttons"><button id="selectAll">Select all</button><button id="selectNone">Clear all</button></div><div class="page-options">${pages.map((p,i)=>`<div class="page-opt"><label><input type="checkbox" data-page-check="${p.key}" ${selected.has(p.key)?'checked':''}><span><b>${esc(p.title)}</b><small>Page ${i+1} · ${esc(p.desc)}</small></span></label></div>`).join('')}</div><button class="primary" id="downloadSelectedInline">Download Selected PDF</button><p class="note">Original uploaded quote PDFs and Word specifications are preserved separately in the contract package ZIP. They are not silently merged or modified.</p>`}
 else{html=`<h2>Pre-Execution Review</h2><p class="hint">Check these items before using the exhibits as executed contract attachments.</p>${warningList().map(t=>`<div class="notice">${esc(t)}</div>`).join('')}<div class="buttons"><button id="goPages">Select PDF Pages</button><button id="goClients">Saved Clients</button></div>`}
+if(data.linkedQuoteKey){const linked=shared.quotes.find(q=>String(q.id)===data.linkedQuoteKey);html+=`<div class="notice"><b>Linked quote: ${esc(data.linkedQuoteNumber||'Saved quote')}</b><p>${!linked?'The linked quote is unavailable or deleted.':linked._revision!==data.linkedQuoteRevision?'The saved quote has changed since import. Review and import it again if appropriate.':'Contract fields match the last imported quote revision.'}</p><p>Approved quote PDFs are attached separately under Exhibit A.</p></div>`}
 $('editor').innerHTML=html}
 function displayDate(s){if(!s)return 'To be confirmed';let d=new Date(s+'T12:00:00');return Number.isNaN(d.getTime())?s:d.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'})}
 function preview(){const p=data.profile;const el=$('preview'),w=$('workspace'),iframe=$('pricingFrame');el.classList.remove('hidden');w.classList.add('hidden');iframe.classList.add('hidden');let main='';const footer=`<div class="foot"><span>BEV-HUB | ${esc(p.customer||'CLIENT')}</span><span>Agreement Date: ${esc(p.effectiveDate||'____________')}</span><span>Page 1</span></div>`;
@@ -142,28 +166,48 @@ else if(tab==='b'){main=`<h1>Exhibit B</h1><div class="subtitle">Product Specifi
 else if(tab==='c'){main=`<div class="tagline">BEV-HUB | CONTRACT EXHIBITS</div><h1 style="font-weight:700">EXHIBIT C</h1><div class="subtitle">Product Supplies and Miscellaneous Supplies</div><h2>Responsibility Matrix</h2><table class="doc-table matrix"><thead><tr><th>Material / Component</th><th>Customer</th><th>Bev-Hub</th><th>N/A</th><th>Notes</th></tr></thead><tbody>${data.materials.filter(x=>x.included).map(m=>`<tr><td>${esc(m.name)}</td>${['Customer','Bev-Hub','N/A'].map(k=>`<td>${m.owner===k?'X':''}</td>`).join('')}<td>${esc(m.notes)}</td></tr>`).join('')}</tbody></table>`}
 else{main=`<div class="tagline">BEV-HUB | CONTRACT EXHIBITS</div><h1 style="font-weight:700">EXHIBIT D</h1><div class="subtitle">PRODUCTION SCHEDULING; SHIPPING AND HANDLING</div>${data.exhibitD.filter(x=>x.heading||x.text).map((s,i)=>`<div class="dsec"><b>${i+1}. ${esc(s.heading)}</b><p>${esc(s.text)}</p></div>`).join('')}`}
 el.innerHTML=main+footer}
-function render(){document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('sel',b.dataset.tab===tab));renderEditor();preview()}
-function parseEdits(target){if(target.dataset.profile){data.profile[target.dataset.profile]=target.value;return true}if(target.dataset.sku!==undefined){data.skus[+target.dataset.sku][target.dataset.skuKey]=target.value;return true}if(target.dataset.materialNote!==undefined){data.materials[+target.dataset.materialNote].notes=target.value;return true}if(target.dataset.dHeading!==undefined){data.exhibitD[+target.dataset.dHeading].heading=target.value;return true}if(target.dataset.dText!==undefined){data.exhibitD[+target.dataset.dText].text=target.value;return true}if(target.hasAttribute('data-bterms')){data.bTerms=target.value;return true}if(target.hasAttribute('data-bnotice')){data.bSpecsNotice=target.value;return true}return false}
+function render(){document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('sel',b.dataset.tab===tab));renderEditor();preview();if(clientSwitchBusy)lockClientEditor(true)}
+function parseEdits(target){if(clientSwitchBusy)return false;if(target.dataset.profile){data.profile[target.dataset.profile]=target.value;return true}if(target.dataset.sku!==undefined){data.skus[+target.dataset.sku][target.dataset.skuKey]=target.value;return true}if(target.dataset.materialNote!==undefined){data.materials[+target.dataset.materialNote].notes=target.value;return true}if(target.dataset.dHeading!==undefined){data.exhibitD[+target.dataset.dHeading].heading=target.value;return true}if(target.dataset.dText!==undefined){data.exhibitD[+target.dataset.dText].text=target.value;return true}if(target.hasAttribute('data-bterms')){data.bTerms=target.value;return true}if(target.hasAttribute('data-bnotice')){data.bSpecsNotice=target.value;return true}return false}
 document.addEventListener('input',ev=>{if(parseEdits(ev.target)){saveSoon();preview()}});
 document.addEventListener('change',ev=>{const t=ev.target;if(t.dataset.materialInclude!==undefined){data.materials[+t.dataset.materialInclude].included=t.checked;saveSoon();preview()}if(t.dataset.materialOwner!==undefined){data.materials[+t.dataset.materialOwner].owner=t.value;saveSoon();preview()}if(t.dataset.pageCheck){if(t.checked){selected.add(t.dataset.pageCheck);excludedPages.delete(t.dataset.pageCheck)}else{selected.delete(t.dataset.pageCheck);excludedPages.add(t.dataset.pageCheck)}preview()}});
 document.getElementById('tabs').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(b){tab=b.dataset.tab;render()}});
 document.addEventListener('click',ev=>{(async()=>{let t=ev.target;const id=t.id;const ds=t.dataset;
-if(id==='reloadShared'){await reloadSharedClients();return}if(id==='importBrowser'){await importBrowserClients();return}if(id==='importPricingQuote'){await shared.refreshQuotes();importPricingQuote();return}if(id==='newClient'){await addClient();return}if(ds.openClient){await selectClient(ds.openClient);return}if(ds.deleteClient){if(!confirm('Delete this customer from the shared workspace? Other members will no longer see it. Record history is retained for recovery.'))return;await saveQueue;await idbDeleteClient(ds.deleteClient);if(ds.deleteClient===activeId){const x=blank();activeId=x.id;data=x;files={quote:null,specs:{}};library[activeId]=clone(x)}writeLibrary();render();return}
+if(id==='reloadShared'){await reloadSharedClients();return}if(id==='importBrowser'){await importBrowserClients();return}if(id==='importPricingQuote'){await shared.refreshQuotes();importPricingQuote();return}if(id==='newClient'){await addClient();return}if(ds.openClient){await selectClient(ds.openClient);return}if(ds.deleteClient){if(pendingFileOps||clientSwitchBusy)throw Error('Wait for attachment or customer operations to finish.');if(!confirm('Delete this customer from the shared workspace? Other members will no longer see it. Record history is retained for recovery.'))return;await saveQueue;await idbDeleteClient(ds.deleteClient);if(ds.deleteClient===activeId){const x=blank();activeId=x.id;data=x;files={quote:null,specs:{}};library[activeId]=clone(x)}writeLibrary();render();return}
 if(ds.backupClient){if(ds.backupClient!==activeId)await selectClient(ds.backupClient);await downloadClientBackup();return}
 if(id==='openCurrent'||id==='goClients'||id==='goPages'){tab=id==='goClients'?'clients':id==='goPages'?'pages':'profile';render();return}
 if(id==='openCalculator'){window.open(CALCULATOR_URL,'_blank','noopener,noreferrer');return}
 if(id==='pickQuote'){$('quoteFile').click();return}if(id==='pickSpecs'){$('specFiles').click();return}
-if(id==='removeQuote'){await idbDeleteKey(activeId+':quote');files.quote=null;render();return}
+if(id==='removeQuote'){await removeAttachment('quote');return}
 if(id==='addSku'){data.skus.push({name:'',sku:'',can:'',end:'',fill:''});saveNow();render();return}if(ds.removeSku!==undefined){data.skus.splice(+ds.removeSku,1);saveNow();render();return}
-if(ds.removeSpec){const name=decodeURIComponent(ds.removeSpec);await idbDeleteKey(activeId+':spec:'+name);delete files.specs[name];render();return}
+if(ds.removeSpec){await removeAttachment('spec',decodeURIComponent(ds.removeSpec));return}
 if(id==='addMaterial'){let name=$('newMaterial').value.trim();if(name){data.materials.push({name,included:true,owner:'',notes:''});saveNow();render()}return}if(ds.removeMaterial!==undefined){data.materials.splice(+ds.removeMaterial,1);saveNow();render();return}
 if(id==='addD'){data.exhibitD.push({heading:'',text:''});saveNow();render();return}if(ds.removeD!==undefined){data.exhibitD.splice(+ds.removeD,1);saveNow();render();return}
 if(id==='selectAll'){selected=new Set(collectPages().map(x=>x.key));excludedPages.clear();render();return}if(id==='selectNone'){selected.clear();excludedPages=new Set(collectPages().map(x=>x.key));render();return}
 if(id==='downloadSelectedInline'||id==='downloadPdf'){downloadSelectedPdf();return}if(id==='downloadZip'){await downloadPackage();return}if(id==='saveClient'){await saveNow();return}if(id==='backupClient'){await downloadClientBackup();return}if(id==='restoreClient'){$('projectFile').click();return}
 })().catch(err=>setStatus(err.message,true))});
 async function idbDeleteKey(key){await shared.removeFile(key)}
-$('quoteFile').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;files.quote={name:f.name,blob:f};try{await idbPut(activeId+':quote',f.name,f)}catch{setStatus('Attachment not saved; export a backup',true)}e.target.value='';render()});
-$('specFiles').addEventListener('change',async e=>{for(const f of e.target.files){files.specs[f.name]=f;try{await idbPut(activeId+':spec:'+f.name,f.name,f)}catch{setStatus('Attachment not saved; export a backup',true)}}e.target.value='';render()});
+async function removeAttachment(kind,name){
+ if(pendingFileOps||clientSwitchBusy)throw Error('Wait for the current attachment or customer operation to finish.');
+ const id=activeId;pendingFileOps++;
+ try{await idbDeleteKey(id+(kind==='quote'?':quote':':spec:'+name));if(activeId===id){if(kind==='quote')files.quote=null;else delete files.specs[name]}setStatus('Attachment removed from shared workspace');render()}finally{pendingFileOps--}
+}
+
+async function uploadFiles(input,kind){
+ const chosen=[...input.files];input.value='';if(!chosen.length)return;
+ if(clientSwitchBusy||pendingFileOps){setStatus('Wait for the current attachment or customer operation to finish, then select the file again.',true);return}
+ const clientId=activeId;pendingFileOps++;uploadError=false;
+ try{
+  for(const f of chosen){
+   setStatus('Uploading '+f.name+'…');
+   await idbPut(clientId+(kind==='quote'?':quote':':spec:'+f.name),f.name,f);
+   if(activeId===clientId){if(kind==='quote')files.quote={name:f.name,blob:f};else files.specs[f.name]=f}
+  }
+  setStatus('Attachments saved to shared workspace');
+ }catch(e){uploadError=true;setStatus('Attachment not saved: '+e.message+' The previous saved attachment is kept. Select the original file again to retry.',true)}
+ finally{pendingFileOps--;render()}
+}
+$('quoteFile').addEventListener('change',e=>uploadFiles(e.target,'quote'));
+$('specFiles').addEventListener('change',e=>uploadFiles(e.target,'spec'));
 function download(name,blob){const u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=name;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),30000)}
 function slug(){return (data.profile.customer||data.profile.legalName||'NEW_CLIENT').replace(/[^a-z0-9_-]+/gi,'_')}
 function crc32(bytes){let c=0xFFFFFFFF;for(const b of bytes){c^=b;for(let i=0;i<8;i++)c=c&1?(c>>>1)^0xEDB88320:c>>>1}return(c^0xFFFFFFFF)>>>0}
@@ -172,8 +216,8 @@ async function bytesOf(blob){return new Uint8Array(await blob.arrayBuffer())}
 async function sourceParts(){const a=[];if(files.quote)a.push(['Source_Documents/Exhibit_A_Approved_Quote_'+files.quote.name,await bytesOf(files.quote.blob)]);for(const [name,blob] of Object.entries(files.specs))a.push(['Source_Documents/Exhibit_B_Specifications/'+name,await bytesOf(blob)]);return a}
 async function downloadClientBackup(){const pack=[['BevHub_Project.json',JSON.stringify(data,null,2)],...await sourceParts()];download('BevHub_'+slug()+'_Editable_Backup.zip',zipParts(pack))}
 async function downloadPackage(){await saveNow();const all=collectPages();all.forEach(pg=>{if(!excludedPages.has(pg.key))selected.add(pg.key)});const ops=all.filter(pg=>selected.has(pg.key)),gen=buildPdf(ops),list=warningList().join('\r\n');const entries=[['Exhibits_A-D_Selected_Pages.pdf',await bytesOf(gen)],['BevHub_Project.json',JSON.stringify(data,null,2)],['REVIEW_BEFORE_EXECUTION.txt',list],...await sourceParts()];download('BevHub_'+slug()+'_Contract_Exhibits.zip',zipParts(entries))}
-async function readZipAny(bytes){const dat=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),dec=new TextDecoder(),out={};let eocd=-1;for(let i=bytes.length-22;i>=Math.max(0,bytes.length-65557);i--){if(dat.getUint32(i,true)===0x06054b50){eocd=i;break}}if(eocd<0)throw Error('ZIP directory not found.');const entries=dat.getUint16(eocd+10,true);let pos=dat.getUint32(eocd+16,true);for(let j=0;j<entries;j++){if(dat.getUint32(pos,true)!==0x02014b50)throw Error('ZIP directory is invalid.');const method=dat.getUint16(pos+10,true),compressedSize=dat.getUint32(pos+20,true),nl=dat.getUint16(pos+28,true),xl=dat.getUint16(pos+30,true),cl=dat.getUint16(pos+32,true),local=dat.getUint32(pos+42,true),name=dec.decode(bytes.slice(pos+46,pos+46+nl));pos+=46+nl+xl+cl;if(name.endsWith('/'))continue;if(dat.getUint32(local,true)!==0x04034b50)throw Error('ZIP entry header missing.');let dataAt=local+30+dat.getUint16(local+26,true)+dat.getUint16(local+28,true),raw=bytes.slice(dataAt,dataAt+compressedSize);if(method===0)out[name]=raw;else if(method===8){if(!('DecompressionStream' in window))throw Error('This browser cannot read compressed ZIPs; import a project JSON instead.');const stream=new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'));out[name]=new Uint8Array(await new Response(stream).arrayBuffer())}else throw Error('Unsupported ZIP compression: '+method)}return out}
-$('projectFile').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;try{let incoming={},obj=null;if(f.name.toLowerCase().endsWith('.json'))obj=JSON.parse(await f.text());else{incoming=await readZipAny(new Uint8Array(await f.arrayBuffer()));const projectName=Object.keys(incoming).find(k=>/^(?:BevHub_Project|GHOST_Project(?:_UPDATED)?)\.json$/i.test(k.split('/').pop()));const js=incoming[projectName];if(!js)throw Error('Project JSON missing from backup.');obj=JSON.parse(new TextDecoder().decode(js))}if(!obj.profile||!Array.isArray(obj.skus)||!Array.isArray(obj.materials))throw Error('Invalid Bev-Hub project file');const x=blank();Object.assign(x,obj,{id:uid(),modified:new Date().toISOString()});delete x._revision;delete x._updatedBy;x.profile={...blank().profile,...(obj.profile||{})};x.exhibitD=Array.isArray(obj.exhibitD)?obj.exhibitD:blank().exhibitD;library[x.id]=clone(x);activeId=x.id;data=x;files={quote:null,specs:{}};await saveNow();for(const [path,bytes] of Object.entries(incoming)){if(path.toLowerCase().endsWith('.pdf')&&(path.includes('Exhibit_A_Approved_Quote_')||path.endsWith('Exhibit_A_Original_Manufacturing_Quote.pdf')||path==='Exhibit_A_Approved_Quote.pdf')){let name=path.includes('Exhibit_A_Approved_Quote_')?path.split('Exhibit_A_Approved_Quote_')[1]:path.split('/').pop();let blob=new Blob([bytes],{type:'application/pdf'});files.quote={name,blob};await idbPut(activeId+':quote',name,blob)}else if(path.startsWith('Source_Documents/Exhibit_B_Specifications/')||path.startsWith('Exhibit_B_Attached_Product_Specifications/')){let name=path.split('/').pop(),blob=new Blob([bytes],{type:name.endsWith('.pdf')?'application/pdf':'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});files.specs[name]=blob;await idbPut(activeId+':spec:'+name,name,blob)}}tab='profile';render();setStatus('Client imported');}catch(err){alert('Import failed: '+err.message)}e.target.value=''});
+async function readZipAny(bytes){const dat=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),dec=new TextDecoder(),out={};let eocd=-1;for(let i=bytes.length-22;i>=Math.max(0,bytes.length-65557);i--){if(dat.getUint32(i,true)===0x06054b50){eocd=i;break}}if(eocd<0)throw Error('ZIP directory not found.');const entries=dat.getUint16(eocd+10,true);if(entries>1000)throw Error('Client backup has too many entries.');let expandedBytes=0;let pos=dat.getUint32(eocd+16,true);for(let j=0;j<entries;j++){if(dat.getUint32(pos,true)!==0x02014b50)throw Error('ZIP directory is invalid.');const method=dat.getUint16(pos+10,true),compressedSize=dat.getUint32(pos+20,true),nl=dat.getUint16(pos+28,true),xl=dat.getUint16(pos+30,true),cl=dat.getUint16(pos+32,true),local=dat.getUint32(pos+42,true),name=dec.decode(bytes.slice(pos+46,pos+46+nl));pos+=46+nl+xl+cl;if(name.startsWith('/')||name.includes('\\')||name.split('/').includes('..')||Object.prototype.hasOwnProperty.call(out,name))throw Error('Unsafe or duplicate backup entry.');if(name.endsWith('/'))continue;if(compressedSize>20*1024*1024)throw Error('Backup attachment is too large.');if(dat.getUint32(local,true)!==0x04034b50)throw Error('ZIP entry header missing.');let dataAt=local+30+dat.getUint16(local+26,true)+dat.getUint16(local+28,true),raw=bytes.slice(dataAt,dataAt+compressedSize);if(method===0)out[name]=raw;else if(method===8){if(!('DecompressionStream' in window))throw Error('This browser cannot read compressed ZIPs; import a project JSON instead.');const stream=new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'));let total=0,parts=[],reader=stream.getReader();while(true){const chunk=await reader.read();if(chunk.done)break;total+=chunk.value.length;if(total>20*1024*1024||total+expandedBytes>100*1024*1024){await reader.cancel();throw Error('Expanded attachment exceeds 20 MiB.')}parts.push(chunk.value)}const bytes=new Uint8Array(total);let offset=0;for(const part of parts){bytes.set(part,offset);offset+=part.length}out[name]=bytes}else throw Error('Unsupported ZIP compression: '+method);expandedBytes+=out[name].length;if(expandedBytes>100*1024*1024)throw Error('Expanded client backup exceeds 100 MiB.')}return out}
+$('projectFile').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;try{if(pendingFileOps||clientSwitchBusy)throw Error('Wait for attachment or customer operations to finish.');if(f.size>100*1024*1024)throw Error('Client backup exceeds the 100 MiB import limit.');let incoming={},obj=null;if(f.name.toLowerCase().endsWith('.json'))obj=JSON.parse(await f.text());else{incoming=await readZipAny(new Uint8Array(await f.arrayBuffer()));const projectName=Object.keys(incoming).find(k=>/^(?:BevHub_Project|GHOST_Project(?:_UPDATED)?)\.json$/i.test(k.split('/').pop()));const js=incoming[projectName];if(!js)throw Error('Project JSON missing from backup.');obj=JSON.parse(new TextDecoder().decode(js))}if(!obj.profile||!Array.isArray(obj.skus)||!Array.isArray(obj.materials))throw Error('Invalid Bev-Hub project file');shared.validateClient(obj,{strict:true});if(!shared.confirmLeave('calculator')||!shared.confirmLeave('contracts'))return;await saveNow();const x=blank();Object.assign(x,obj,{id:uid(),modified:new Date().toISOString()});delete x._revision;delete x._updatedBy;x.profile={...blank().profile,...(obj.profile||{})};x.exhibitD=Array.isArray(obj.exhibitD)?obj.exhibitD:blank().exhibitD;library[x.id]=clone(x);activeId=x.id;data=x;files={quote:null,specs:{}};await saveNow();for(const [path,bytes] of Object.entries(incoming)){if(path.toLowerCase().endsWith('.pdf')&&(path.includes('Exhibit_A_Approved_Quote_')||path.endsWith('Exhibit_A_Original_Manufacturing_Quote.pdf')||path==='Exhibit_A_Approved_Quote.pdf')){let name=path.includes('Exhibit_A_Approved_Quote_')?path.split('Exhibit_A_Approved_Quote_')[1]:path.split('/').pop();let blob=new Blob([bytes],{type:'application/pdf'});files.quote={name,blob};await idbPut(activeId+':quote',name,blob)}else if(path.startsWith('Source_Documents/Exhibit_B_Specifications/')||path.startsWith('Exhibit_B_Attached_Product_Specifications/')){let name=path.split('/').pop(),blob=new Blob([bytes],{type:name.endsWith('.pdf')?'application/pdf':'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});files.specs[name]=blob;await idbPut(activeId+':spec:'+name,name,blob)}}tab='profile';render();setStatus('Client imported');}catch(err){alert('Import failed: '+err.message)}e.target.value=''});
 // PDF document authoring. The generated pages represent the current A-D form fields.
 // Original customer files are included unchanged as separate source attachments in ZIP exports.
 const pt=612,pH=792,margin=52;

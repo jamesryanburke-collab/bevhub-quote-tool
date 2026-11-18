@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import QuoteFileTools from "./workspace/QuoteFileTools.jsx";
 
 const DEFAULT_WEEKLY_12_PACK = 75000;
 const DEFAULT_WEEKLY_24_PACK = 37500;
@@ -362,6 +363,9 @@ function BevHubPricingApp() {
   const [savedQuoteStatusFilter, setSavedQuoteStatusFilter] = useState("All");
   const [activeSavedQuoteId, setActiveSavedQuoteId] = useState(null);
   const [saveNotice, setSaveNotice] = useState("");
+  const [draftDirty,setDraftDirty]=useState(false),[draftGeneration,setDraftGeneration]=useState(0);
+  const baselineDraft=useRef(null),resetDraft=useRef(false),latestFingerprint=useRef(''),dirtyRef=useRef(false);
+  const confirmReplaceDraft=()=>workspace.confirmLeave('calculator');
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -958,6 +962,7 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
 
   async function saveCurrentQuote() {
     if (savingQuote) return;
+    const submittedFingerprint=quoteFingerprint();
     setSavingQuote(true);
     const now = new Date().toISOString();
     try {
@@ -969,6 +974,7 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
         _revision: activeSavedQuoteId ? activeRevision : undefined,
       };
       const saved = await workspace.save("quote", record);
+      resetDraft.current=false;baselineDraft.current=submittedFingerprint;dirtyRef.current=latestFingerprint.current!==submittedFingerprint;setDraftDirty(dirtyRef.current);
       setActiveSavedQuoteId(saved.id); setActiveRevision(saved._revision);
       await refreshSharedQuotes(); setSaveNotice(`${saved.quoteNumber} saved to the shared workspace.`);
     } catch (error) { setSaveNotice(error.message + " Your calculator inputs are still here. Reopen the shared quote before retrying a conflict."); }
@@ -976,6 +982,8 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
   }
 
   function loadSavedQuote(quote, duplicate = false) {
+    if(!confirmReplaceDraft())return false;
+    resetDraft.current=duplicate?'new':'saved';setDraftGeneration(n=>n+1);
     setClientName(quote.clientName ?? "Client Name");
     setAnnualCases(quote.annualCases ?? "300000");
     setProductionWeeksPerYear(quote.productionWeeksPerYear ?? "2");
@@ -1009,12 +1017,13 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
     setTrialFacilityRate(quote.trialFacilityRate ?? "25000");
     setTrialExpectedCans(quote.trialExpectedCans ?? "15000");
     setTrialDaysReserved(quote.trialDaysReserved ?? "1");
-    if (quote.quoteDisplay) setQuoteDisplay({ ...RECOMMENDED_QUOTE_DISPLAY, ...quote.quoteDisplay });
+    setQuoteDisplay({ ...RECOMMENDED_QUOTE_DISPLAY, ...(quote.quoteDisplay||{}) });
     setActiveSavedQuoteId(duplicate ? null : quote.id);
     setActiveRevision(duplicate ? null : quote._revision);
-    setSaveNotice(duplicate ? `Loaded a copy of ${quote.quoteNumber}. Save to create a new quote.` : `${quote.quoteNumber} loaded.`);
+    setSaveNotice(duplicate ? (quote.quoteNumber ? `Loaded a copy of ${quote.quoteNumber}. Save to create a new quote.` : "Imported quote loaded. Review pricing, then save to create a new quote.") : `${quote.quoteNumber} loaded.`);
     window.scrollTo({ top: 0, behavior: "smooth" });
     window.setTimeout(() => setSaveNotice(""), 3000);
+    return true;
   }
 
   async function deleteSavedQuote(id) {
@@ -1031,17 +1040,28 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
     const quote = savedQuotes.find(q => q.id === id);
     try {
       const saved = await workspace.save("quote", { ...quote, status, updatedAt: new Date().toISOString() });
-      // An open draft stays pinned to the revision it was opened from. Reopen after a status change.
+      // Only advance our own unchanged revision; never adopt a teammate's newer record.
+      if(activeSavedQuoteId===id&&quote._revision===activeRevision)setActiveRevision(saved._revision);
       await refreshSharedQuotes(); setSaveNotice(`${saved.quoteNumber} status saved.`);
     } catch (error) { setSaveNotice(error.message); }
   }
 
   function startNewQuote() {
+    if(!confirmReplaceDraft())return;
     setActiveSavedQuoteId(null);
     setActiveRevision(null);
-    setSaveNotice("New quote mode. Your current calculator values were left in place.");
+    baselineDraft.current='__new__';dirtyRef.current=true;setDraftDirty(true);
+    setSaveNotice("New quote mode. Your current calculator values were left in place; save to create a quote.");
     window.setTimeout(() => setSaveNotice(""), 2500);
   }
+
+  function quoteFingerprint(){const {quoteNumber,status,summary,...inputs}=currentQuoteSnapshot();return JSON.stringify(inputs)}
+  const fingerprint=quoteFingerprint();latestFingerprint.current=fingerprint;
+  useEffect(()=>{
+    if(resetDraft.current||baselineDraft.current===null){const isNew=resetDraft.current==='new';baselineDraft.current=isNew?'__new__':fingerprint;resetDraft.current=false;dirtyRef.current=isNew;setDraftDirty(isNew);return}
+    dirtyRef.current=baselineDraft.current!==fingerprint;setDraftDirty(dirtyRef.current);
+  },[fingerprint,draftGeneration]);
+  useEffect(()=>workspace.registerGuard('calculator',check=>check?dirtyRef.current||savingQuote:savingQuote?(setSaveNotice('Wait for the quote save to finish.'),false):!dirtyRef.current||window.confirm('You have unsaved calculator changes. Download an editable quote or save first. Discard these changes?')),[workspace,savingQuote]);
 
   const filteredSavedQuotes = savedQuotes.filter((quote) => {
     const search = savedQuoteSearch.trim().toLowerCase();
@@ -1058,13 +1078,15 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
         <header className="flex flex-col gap-4 rounded-2xl border bg-white p-5 shadow-sm md:flex-row md:items-start md:justify-between">
           <div>
             <h1 className="text-3xl font-semibold">Bev-Hub Quote Calculator MHK v6.7 Financial Intelligence</h1>
-            <p className="text-xs font-semibold text-green-700">Version: MHK v6.6 Saved Quote Library</p>
+            <p className="text-xs font-semibold text-green-700">Version: MHK v6.7 Shared Quote Workspace</p>
             <p className="mt-2 text-sm text-slate-600">
               Manhattan-only pricing tool. Standard weekly output is 75,000 12-pack cases or 37,500 24-pack cases. Weekly output can be adjusted if operations confirms a different run rate.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            <QuoteFileTools snapshot={currentQuoteSnapshot} onImport={quote=>loadSavedQuote(quote,true)}/>
+            <span role="status" className="text-sm">{draftDirty ? "Unsaved changes" : "No unsaved changes"}</span>
             <button
               type="button"
               onClick={startNewQuote}
@@ -1091,7 +1113,7 @@ ${customTermLines.map((line) => `*${line}`).join("\n")}` : "",
         </header>
 
         {saveNotice && (
-          <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-800">
+          <div role="status" aria-live="polite" className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-800">
             {saveNotice}
           </div>
         )}

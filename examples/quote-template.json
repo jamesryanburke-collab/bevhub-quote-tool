@@ -1,0 +1,33 @@
+{
+  "format": "bevhub-quote",
+  "version": 1,
+  "quote": {
+    "clientName": "Example Brand — replace before use",
+    "pricingProgram": "annual",
+    "canSize": "250 ml Slim",
+    "casePack": "24",
+    "annualCases": "300000",
+    "productionWeeksPerYear": "2",
+    "skuCount": "2",
+    "tolling": "0.40045",
+    "casesPerPallet": "91",
+    "canEndMode": "clientSupplied",
+    "trayMode": "clientSupplied",
+    "caseLabelMode": "clientSupplied",
+    "palletMode": "clientSupplied",
+    "sleeveMode": "notNeeded",
+    "cartonMode": "notNeeded",
+    "canEndCostPerCan": "0.1681",
+    "trayCostPerCase": "0.2544",
+    "caseLabelCostPerCase": "0.011",
+    "palletMaterialCostPerPallet": "13.03",
+    "sleeveCostPerCan": "0.10",
+    "cartonCostPerCan": "0.0225",
+    "weeklyOutput12Pack": "75000",
+    "weeklyOutput24Pack": "37500",
+    "lowWeeklyOH": "250000",
+    "highWeeklyOH": "350000",
+    "cogsBuffer": "0",
+    "customTerms": ""
+  }
+}
