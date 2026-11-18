@@ -53,6 +53,15 @@ def run(browser,base,password,out):
   p.wait_for_timeout(20)
  assert pending;pending[0].continue_();f.locator('#saveStatus').filter(has_text='Attachments saved').wait_for();p.unroute('**/api/files?**')
  print('Failed attachments remain visibly unsaved; client switching during upload is blocked',flush=True)
+ # Editing must be disabled while a shared-client reload is still fetching.
+ f.locator('[data-tab=profile]').click();held=[]
+ p.route('**/api/records/client',lambda route:held.append(route) if route.request.method=='GET' else route.continue_())
+ f.locator('#reloadShared').click();expect(f.locator('#p_legalName')).to_be_disabled()
+ for _ in range(100):
+  if held:break
+  p.wait_for_timeout(20)
+ assert held;held[0].continue_();f.locator('#saveStatus').filter(has_text='Shared clients reloaded').wait_for();p.unroute('**/api/records/client');f.locator('[data-tab=profile]').click();expect(f.locator('#p_legalName')).to_have_value('Shared Client LLC')
+ print('Client reload locks editing until the matching record and files are ready',flush=True)
  p.get_by_role('button',name='Backup & recovery').click();tools=p.get_by_role('dialog');tools.get_by_text(re.compile('Attachment storage:')).wait_for()
  with p.expect_download() as dl:tools.get_by_role('button',name='Download workspace backup',exact=True).click()
  dl.value.save_as(out/'workspace.zip')

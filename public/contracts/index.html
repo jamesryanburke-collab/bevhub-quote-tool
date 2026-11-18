@@ -30,7 +30,9 @@ function setStatus(msg,bad=false){$('saveStatus').textContent=msg;$('saveStatus'
 async function idbList(id){return await shared.listFiles(id)}
 async function idbPut(key,name,blob){await saveNow();await shared.putFile(key,name,blob)}
 async function idbDeleteClient(id){if(library[id]?._revision)await shared.remove('client',library[id]);delete library[id]}
-async function loadFiles(id){const sequence=++clientLoadSequence,next={quote:null,specs:{}};for(const r of await idbList(id)){if(r.key===id+':quote')next.quote={name:r.name,blob:r.blob};else if(r.key.startsWith(id+':spec:'))next.specs[r.name]=r.blob}if(sequence===clientLoadSequence&&id===activeId)files=next}
+function lockClientEditor(locked){clientSwitchBusy=locked;document.querySelectorAll('#editor input,#editor textarea,#editor select,#editor button,header button').forEach(el=>{el.disabled=locked})}
+async function readClientFiles(id){const next={quote:null,specs:{}};for(const r of await idbList(id)){if(r.key===id+':quote')next.quote={name:r.name,blob:r.blob};else if(r.key.startsWith(id+':spec:'))next.specs[r.name]=r.blob}return next}
+async function loadFiles(id){const sequence=++clientLoadSequence,next=await readClientFiles(id);if(sequence===clientLoadSequence&&id===activeId)files=next}
 function ensure(){if(!data){const x=blank();activeId=x.id;data=x;library[activeId]=clone(x)}}
 function saveNow(){
  ensure();clearTimeout(saveTimer);
@@ -52,10 +54,14 @@ function saveNow(){
 async function reloadSharedClients(){
  if(pendingFileOps||clientSwitchBusy)throw Error('Wait for the attachment or customer operation to finish.');
  if(!confirm('Reload shared customers? Download a backup first if you have unsaved edits.'))return;
- clearTimeout(saveTimer);await saveQueue;saveBlocked=false;dirtyClient=false;uploadError=false;
- library=Object.fromEntries((await shared.list('client')).map(c=>[c.id,c]));
- data=library[activeId]?clone(library[activeId]):blank();activeId=data.id;
- await loadFiles(activeId);await shared.refreshQuotes();tab='clients';render();setStatus('Shared clients reloaded');
+ lockClientEditor(true);
+ try{
+  clearTimeout(saveTimer);await saveQueue;
+  const nextLibrary=Object.fromEntries((await shared.list('client')).map(c=>[c.id,c]));
+  const nextData=nextLibrary[activeId]?clone(nextLibrary[activeId]):blank(),nextFiles=await readClientFiles(nextData.id);
+  await shared.refreshQuotes();library=nextLibrary;data=nextData;activeId=data.id;files=nextFiles;saveBlocked=false;dirtyClient=false;uploadError=false;
+  tab='clients';render();setStatus('Shared clients reloaded');
+ }finally{lockClientEditor(false)}
 }
 async function importBrowserClients(){
  if(!confirm('Import customer records and attachments saved in this browser into the shared workspace? Existing shared customers will be skipped. Local copies remain unchanged.'))return;
@@ -128,12 +134,12 @@ window.addEventListener('message',ev=>{
 });
 function saveSoon(){dirtyClient=true;setStatus('Saving…');clearTimeout(saveTimer);saveTimer=setTimeout(()=>saveNow().catch(()=>{}),600)}
 async function selectClient(id){
- if(!library[id])return;if(pendingFileOps||clientSwitchBusy)throw Error('Wait for the attachment or customer operation to finish.');clientSwitchBusy=true;
- try{clearTimeout(saveTimer);if(data)await saveNow();activeId=id;data=clone(library[id]);await loadFiles(id);selected=new Set(['A1','B1','C1','D1']);excludedPages.clear();tab='profile';writeLibrary();render()}finally{clientSwitchBusy=false}
+ if(!library[id])return;if(pendingFileOps||clientSwitchBusy)throw Error('Wait for the attachment or customer operation to finish.');lockClientEditor(true);
+ try{clearTimeout(saveTimer);if(data)await saveNow();const nextFiles=await readClientFiles(id);activeId=id;data=clone(library[id]);files=nextFiles;selected=new Set(['A1','B1','C1','D1']);excludedPages.clear();tab='profile';writeLibrary();render();setStatus('Shared customer opened')}finally{lockClientEditor(false)}
 }
 async function addClient(){
- if(pendingFileOps||clientSwitchBusy)throw Error('Wait for the attachment or customer operation to finish.');clientSwitchBusy=true;
- try{clearTimeout(saveTimer);if(data)await saveNow();const x=blank();library[x.id]=clone(x);activeId=x.id;data=x;files={quote:null,specs:{}};selected=new Set(['A1','B1','C1','D1']);excludedPages.clear();writeLibrary();tab='profile';render()}finally{clientSwitchBusy=false}
+ if(pendingFileOps||clientSwitchBusy)throw Error('Wait for the attachment or customer operation to finish.');lockClientEditor(true);
+ try{clearTimeout(saveTimer);if(data)await saveNow();const x=blank();library[x.id]=clone(x);activeId=x.id;data=x;files={quote:null,specs:{}};selected=new Set(['A1','B1','C1','D1']);excludedPages.clear();writeLibrary();tab='profile';render()}finally{lockClientEditor(false)}
 }
 function field(key,label,type='text'){return `<div class="field"><label for="p_${key}">${label}</label><input id="p_${key}" data-profile="${key}" type="${type}" value="${esc(data.profile[key])}"></div>`}
 function skuField(i,key,label){return `<div class="field"><label>${label}</label><input data-sku="${i}" data-sku-key="${key}" value="${esc(data.skus[i][key])}"></div>`}
@@ -160,8 +166,8 @@ else if(tab==='b'){main=`<h1>Exhibit B</h1><div class="subtitle">Product Specifi
 else if(tab==='c'){main=`<div class="tagline">BEV-HUB | CONTRACT EXHIBITS</div><h1 style="font-weight:700">EXHIBIT C</h1><div class="subtitle">Product Supplies and Miscellaneous Supplies</div><h2>Responsibility Matrix</h2><table class="doc-table matrix"><thead><tr><th>Material / Component</th><th>Customer</th><th>Bev-Hub</th><th>N/A</th><th>Notes</th></tr></thead><tbody>${data.materials.filter(x=>x.included).map(m=>`<tr><td>${esc(m.name)}</td>${['Customer','Bev-Hub','N/A'].map(k=>`<td>${m.owner===k?'X':''}</td>`).join('')}<td>${esc(m.notes)}</td></tr>`).join('')}</tbody></table>`}
 else{main=`<div class="tagline">BEV-HUB | CONTRACT EXHIBITS</div><h1 style="font-weight:700">EXHIBIT D</h1><div class="subtitle">PRODUCTION SCHEDULING; SHIPPING AND HANDLING</div>${data.exhibitD.filter(x=>x.heading||x.text).map((s,i)=>`<div class="dsec"><b>${i+1}. ${esc(s.heading)}</b><p>${esc(s.text)}</p></div>`).join('')}`}
 el.innerHTML=main+footer}
-function render(){document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('sel',b.dataset.tab===tab));renderEditor();preview()}
-function parseEdits(target){if(target.dataset.profile){data.profile[target.dataset.profile]=target.value;return true}if(target.dataset.sku!==undefined){data.skus[+target.dataset.sku][target.dataset.skuKey]=target.value;return true}if(target.dataset.materialNote!==undefined){data.materials[+target.dataset.materialNote].notes=target.value;return true}if(target.dataset.dHeading!==undefined){data.exhibitD[+target.dataset.dHeading].heading=target.value;return true}if(target.dataset.dText!==undefined){data.exhibitD[+target.dataset.dText].text=target.value;return true}if(target.hasAttribute('data-bterms')){data.bTerms=target.value;return true}if(target.hasAttribute('data-bnotice')){data.bSpecsNotice=target.value;return true}return false}
+function render(){document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('sel',b.dataset.tab===tab));renderEditor();preview();if(clientSwitchBusy)lockClientEditor(true)}
+function parseEdits(target){if(clientSwitchBusy)return false;if(target.dataset.profile){data.profile[target.dataset.profile]=target.value;return true}if(target.dataset.sku!==undefined){data.skus[+target.dataset.sku][target.dataset.skuKey]=target.value;return true}if(target.dataset.materialNote!==undefined){data.materials[+target.dataset.materialNote].notes=target.value;return true}if(target.dataset.dHeading!==undefined){data.exhibitD[+target.dataset.dHeading].heading=target.value;return true}if(target.dataset.dText!==undefined){data.exhibitD[+target.dataset.dText].text=target.value;return true}if(target.hasAttribute('data-bterms')){data.bTerms=target.value;return true}if(target.hasAttribute('data-bnotice')){data.bSpecsNotice=target.value;return true}return false}
 document.addEventListener('input',ev=>{if(parseEdits(ev.target)){saveSoon();preview()}});
 document.addEventListener('change',ev=>{const t=ev.target;if(t.dataset.materialInclude!==undefined){data.materials[+t.dataset.materialInclude].included=t.checked;saveSoon();preview()}if(t.dataset.materialOwner!==undefined){data.materials[+t.dataset.materialOwner].owner=t.value;saveSoon();preview()}if(t.dataset.pageCheck){if(t.checked){selected.add(t.dataset.pageCheck);excludedPages.delete(t.dataset.pageCheck)}else{selected.delete(t.dataset.pageCheck);excludedPages.add(t.dataset.pageCheck)}preview()}});
 document.getElementById('tabs').addEventListener('click',e=>{const b=e.target.closest('[data-tab]');if(b){tab=b.dataset.tab;render()}});
