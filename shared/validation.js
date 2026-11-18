@@ -64,3 +64,8 @@ export function parseQuoteFile(text){
  const {_revision,id,quoteNumber,summary,status,createdAt,updatedAt,...inputs}=doc.quote;
  return {...inputs,status:'Draft'};
 }
+
+export function validateFilename(name){
+ if(typeof name!=='string'||!name.length||name.length>255||name==='.'||name==='..'||/[\\/\x00-\x1f\x7f]/.test(name))fail('Use a filename without folders or control characters.');
+ return name;
+}

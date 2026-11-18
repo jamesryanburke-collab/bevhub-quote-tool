@@ -1,4 +1,4 @@
-import {validateRecord} from '../../shared/validation.js';
+import {validateRecord,validateFilename} from '../../shared/validation.js';
 const COOKIE = '__Host-bevhub_session';
 const SESSION_SECONDS = 8 * 60 * 60;
 const MAX_FILE = 20 * 1024 * 1024;
@@ -162,7 +162,7 @@ export async function onRequest({request,env}) {
    const parent=await env.DB.prepare("SELECT id FROM records WHERE kind='client' AND id=? AND deleted=0").bind(client).first();
    if(!parent)throw new HttpError(404,'Save the customer before attaching files.');
    if(request.method==='POST'){
-    const name=url.searchParams.get('name')||'attachment';if(name.length>255)throw new HttpError(400,'Filename is too long.');
+    const name=url.searchParams.get('name')||'attachment';try{validateFilename(name)}catch(e){throw new HttpError(400,e.message)}
     const type=(request.headers.get('Content-Type')||'application/octet-stream').split(';')[0];
     if(!['application/pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/octet-stream'].includes(type))throw new HttpError(400,'Upload a PDF or Word document.');
     const bytes=await readBody(request,MAX_FILE),objectId=crypto.randomUUID();

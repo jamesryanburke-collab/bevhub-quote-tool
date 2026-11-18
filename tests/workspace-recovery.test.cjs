@@ -18,6 +18,7 @@ test('Recovery, storage and backup are authenticated and revision guarded',async
   const rows=await (await call('recovery','GET',undefined,session)).json();assert(rows.find(r=>r.id==='q')._deleted);
   assert.equal((await call('restore/quote/q','POST',{},session,{'If-Match':'4'})).status,200);
   const before=await (await call('storage','GET',undefined,session)).json();assert.equal(before.usedBytes,0);
+  assert.equal((await call('files?client=c&key=quote&name=..%2Fescape.pdf','POST','%PDF-test',session,{'Content-Type':'application/pdf'})).status,400);
   await call('files?client=c&key=quote&name=backup.pdf','POST','%PDF-fixture',session,{'Content-Type':'application/pdf'});
   const backup=await (await call('backup','GET',undefined,session)).json();assert.equal(backup.format,'bevhub-workspace');assert.equal(backup.records.length,2);assert.equal(backup.files.length,1);assert(backup.history.length>=4);assert.equal(backup.sessions,undefined);assert(!JSON.stringify(backup).includes(f.env.SITE_PASSWORD));
   const after=await (await call('storage','GET',undefined,session)).json();assert.equal(after.usedBytes,12);

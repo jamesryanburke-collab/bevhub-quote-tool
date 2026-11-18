@@ -1,4 +1,4 @@
-import {validateClient, validateQuote, validateRecord} from '../../shared/validation.js';
+import {validateClient, validateQuote, validateRecord, validateFilename} from '../../shared/validation.js';
 import {zipParts,readArchive} from './archive.js';
 export async function api(path, options = {}) {
  let result;
@@ -34,7 +34,7 @@ export class WorkspaceStore {
  }
  fileQuery(key) { const split=key.indexOf(':');return new URLSearchParams({client:key.slice(0,split),key:key.slice(split+1)}); }
  async putFile(key,name,blob) {
-  if(blob.size>20*1024*1024)throw Error('Attachments must be 20 MB or smaller.');
+  validateFilename(name);if(blob.size>20*1024*1024)throw Error('Attachments must be 20 MB or smaller.');
   const query=this.fileQuery(key);query.set('name',name);
   const result=await (await api('files?'+query,{method:'POST',headers:{'Content-Type':blob.type||'application/octet-stream',...versionHeaders(this.attachmentVersions.get(key))},body:blob})).json();
   this.attachmentVersions.set(key,result.revision);
@@ -70,7 +70,7 @@ export async function inspectWorkspaceBackup(file){
  const fileKeys=new Set();
  for(const f of manifest.files){
   if(![0,1].includes(f.deleted)||typeof f.object_id!=='string'||!f.object_id.length||f.object_id.length>200||typeof f.client_id!=='string'||!known.has('client:'+f.client_id)||typeof f.file_key!=='string'||!f.file_key.length||f.file_key.length>200||!['application/pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/octet-stream'].includes(f.content_type)||typeof f.name!=='string'||f.name.length>255||fileKeys.has(f.client_id+':'+f.file_key))throw Error('Invalid backup attachment metadata.');
-  fileKeys.add(f.client_id+':'+f.file_key);
+  validateFilename(f.name);fileKeys.add(f.client_id+':'+f.file_key);
   const bytes=entries.get('files/'+f.object_id);
   if(!bytes||bytes.length!==f.size||bytes.length>20*1024*1024||await digest(bytes)!==manifest.checksums?.[f.object_id])throw Error('Missing or damaged backup attachment: '+f.name);
  }

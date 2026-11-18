@@ -1,7 +1,8 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 test('Quote import requires real inputs, rejects malformed files and strips identity/totals',async()=>{
- const {parseQuoteFile,validateClient,validateQuote}=await import('../shared/validation.js');
+ const {parseQuoteFile,validateClient,validateQuote,validateFilename}=await import('../shared/validation.js');
  const quote={clientName:'Import sample',canSize:'16 oz',casePack:'12',annualCases:'500000',tolling:'.4',productionWeeksPerYear:'4',skuCount:'2',casesPerPallet:'100',canEndMode:'clientSupplied',trayMode:'clientSupplied',caseLabelMode:'clientSupplied',palletMode:'clientSupplied',sleeveMode:'notNeeded',cartonMode:'notNeeded',id:'other',_revision:99,status:'Approved',summary:{totalQuote:1}};
+ for(const name of ['../escape.pdf','folder/file.pdf','folder\\file.pdf','x\n.pdf'])assert.throws(()=>validateFilename(name));validateFilename('Approved quote.pdf');
  const parse=q=>parseQuoteFile(JSON.stringify({format:'bevhub-quote',version:1,quote:q}));
  const draft=parse(quote);assert.equal(draft.status,'Draft');assert.equal(draft.id,undefined);assert.equal(draft._revision,undefined);assert.equal(draft.summary,undefined);assert.equal(draft.annualCases,'500000');
  for(const change of [{tolling:'NaN'},{casePack:6},{annualCases:-1},{canSize:'Unknown'},{canEndMode:'additional'},{clientName:''},{annualCases:undefined}])assert.throws(()=>parse({...quote,...change}));
