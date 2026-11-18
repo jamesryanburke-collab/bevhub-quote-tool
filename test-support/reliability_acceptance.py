@@ -59,7 +59,7 @@ def run(browser,base,password,out):
  with zipfile.ZipFile(out/'workspace.zip') as archive:
   manifest=json.loads(archive.read('BevHub_Workspace.json'));assert 'sessions' not in manifest and 'login_attempts' not in manifest
   for meta in manifest['files']:assert hashlib.sha256(archive.read('files/'+meta['object_id'])).hexdigest()==manifest['checksums'][meta['object_id']]
- before=len(request('records/quote')['body']);tools.locator('input[type=file]').set_input_files(str(out/'workspace.zip'));tools.get_by_text('Review backup import',exact=True).wait_for();tools.get_by_role('button',name='Confirm import as copies').click();tools.get_by_text(re.compile('records copied')).wait_for()
+ before=len(request('records/quote')['body']);tools.locator('input[type=file]').set_input_files(str(out/'workspace.zip'));tools.get_by_text('Review backup import',exact=True).wait_for();tools.get_by_role('button',name='Confirm import as copies').click();tools.get_by_text(re.compile(r'^\d+ records copied\. Refresh')).wait_for();expect(tools.get_by_role('button',name='Import workspace backup as copies')).to_be_enabled()
  assert len(request('records/quote')['body'])==before*2
  # Reimporting the exact same backup resumes/skips existing copies, without duplicates.
  tools.locator('input[type=file]').set_input_files(str(out/'workspace.zip'));tools.get_by_text('Review backup import',exact=True).wait_for();tools.get_by_role('button',name='Confirm import as copies').click();tools.get_by_text(re.compile('0 records copied')).wait_for()

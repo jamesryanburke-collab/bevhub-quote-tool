@@ -4,6 +4,9 @@ on:
     branches: [bev-hub-preview, main]
   push:
     branches: [bev-hub-preview]
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
